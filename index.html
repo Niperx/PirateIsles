@@ -1,0 +1,1362 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>PirateIsles</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0d1b2a;
+    color: #d4c5a9;
+    font-family: 'Georgia', 'Times New Roman', serif;
+    overflow: hidden;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  /* ═══ Login overlay ═══════════════════════════ */
+  .overlay {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    background: radial-gradient(ellipse at center, #1b2838 0%, #0d1b2a 70%);
+    z-index: 100;
+  }
+  .overlay h1 {
+    font-size: 42px; margin-bottom: 4px;
+    background: linear-gradient(90deg, #ffd700, #b8860b);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .overlay .sub { color: #7a6f5a; margin-bottom: 20px; font-size: 13px; }
+  .overlay input {
+    width: 260px; padding: 10px 14px;
+    border: 2px solid #3a3020; border-radius: 6px;
+    background: #1a1510; color: #ffd700;
+    font-size: 16px; text-align: center;
+    outline: none; transition: border-color .2s;
+    margin-bottom: 8px;
+    font-family: inherit;
+  }
+  .overlay input::placeholder { color: #5a4f3a; }
+  .overlay input:focus { border-color: #ffd700; }
+  .overlay .big-btn {
+    margin-top: 8px; padding: 10px 40px;
+    border: none; border-radius: 6px;
+    background: linear-gradient(135deg, #b8860b, #ffd700);
+    color: #1a1510; font-size: 15px; font-weight: bold;
+    cursor: pointer; transition: opacity .2s;
+    font-family: inherit;
+  }
+  .overlay .big-btn:hover { opacity: .85; }
+  .overlay .error { margin-top: 8px; color: #ff5252; font-size: 12px; min-height: 16px; }
+
+  /* ═══ Lang toggle (login) ═════════════════════ */
+  #login-lang-btn {
+    position: absolute; top: 12px; right: 16px;
+    padding: 4px 12px;
+    border: 1px solid #3a3020; border-radius: 4px;
+    background: rgba(26,21,16,.8); color: #ffd700;
+    cursor: pointer; font-size: 12px; font-family: inherit;
+    z-index: 101;
+  }
+  #login-lang-btn:hover { background: #2a2010; }
+
+  /* ═══ Game screen ═════════════════════════════ */
+  #game-screen { display: none; position: relative; }
+  #canvas-main { display: block; position: relative; z-index: 1; }
+
+  /* ═══ HUD (top bar) ═══════════════════════════ */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; gap: 0;
+    padding: 0 8px;
+    background: rgba(13,27,42,.94);
+    backdrop-filter: blur(4px);
+    border-bottom: 1px solid #3a3020;
+    z-index: 20; font-size: 13px;
+    height: 36px;
+  }
+  #hud .nick-label {
+    font-weight: bold; color: #ffd700; font-size: 14px;
+    padding: 0 12px 0 4px;
+    border-right: 1px solid #3a3020;
+    margin-right: 4px;
+  }
+  .hud-item {
+    display: flex; align-items: center; gap: 4px;
+    padding: 4px 10px;
+    border-right: 1px solid rgba(255,255,255,.06);
+  }
+  .hud-item .label { color: #7a6f5a; font-size: 11px; }
+  .hud-item .value { color: #ffd700; font-weight: bold; }
+  .hud-item.rum .value { color: #e06050; }
+  .hud-item.gold .value { color: #ffd700; }
+  .hud-item.wood .value { color: #8bc34a; }
+  .hud-item.boats .value { color: #64b5f6; }
+  .hud-shield {
+    padding: 4px 10px;
+    color: #4fc3f7; font-size: 12px;
+    display: none;
+  }
+  #hud-lang-btn {
+    margin-left: auto;
+    padding: 3px 10px;
+    border: 1px solid #3a3020; border-radius: 3px;
+    background: transparent; color: #ffd700;
+    cursor: pointer; font-size: 11px; font-family: inherit;
+  }
+  #hud-lang-btn:hover { background: rgba(255,215,0,.1); }
+
+  /* ═══ Side panels ═════════════════════════════ */
+  .panel {
+    position: fixed;
+    background: rgba(13,27,42,.92);
+    backdrop-filter: blur(4px);
+    border: 1px solid #3a3020;
+    border-radius: 8px;
+    padding: 10px;
+    z-index: 15;
+    font-size: 12px;
+    max-height: calc(100vh - 60px);
+    overflow-y: auto;
+  }
+  .panel h3 {
+    color: #ffd700; font-size: 13px; margin-bottom: 8px;
+    border-bottom: 1px solid #3a3020; padding-bottom: 4px;
+  }
+
+  /* Left panel: upgrades */
+  #panel-upgrades {
+    top: 44px; left: 8px;
+    width: 200px;
+  }
+  .upgrade-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+  }
+  .upgrade-row .u-info { flex: 1; }
+  .upgrade-row .u-name { color: #d4c5a9; font-size: 12px; }
+  .upgrade-row .u-lvl { color: #ffd700; font-size: 11px; }
+  .upgrade-row .u-cost { color: #7a6f5a; font-size: 10px; }
+  .upgrade-btn {
+    padding: 4px 10px;
+    border: 1px solid #3a3020; border-radius: 4px;
+    background: #1a1510; color: #ffd700;
+    cursor: pointer; font-size: 11px;
+    font-family: inherit;
+    transition: background .2s;
+  }
+  .upgrade-btn:hover { background: #2a2010; }
+  .upgrade-btn:disabled { opacity: .4; cursor: default; }
+
+  /* Right panel: raids */
+  #panel-raids {
+    top: 44px; right: 8px;
+    width: 200px;
+  }
+  #btn-send-raid {
+    width: 100%; padding: 8px;
+    border: 1px solid #3a3020; border-radius: 4px;
+    background: linear-gradient(135deg, #1a3a5c, #0d1b2a);
+    color: #64b5f6; cursor: pointer;
+    font-size: 12px; font-weight: bold;
+    font-family: inherit;
+    transition: background .2s;
+    margin-bottom: 8px;
+  }
+  #btn-send-raid:hover { background: linear-gradient(135deg, #2a4a6c, #1a2a3a); }
+  #btn-send-raid:disabled { opacity: .4; cursor: default; }
+  .raid-item {
+    padding: 6px; margin-bottom: 4px;
+    background: rgba(100,181,246,.08);
+    border: 1px solid rgba(100,181,246,.15);
+    border-radius: 4px;
+  }
+  .raid-bar {
+    height: 4px; background: #1a1510;
+    border-radius: 2px; margin: 4px 0;
+    overflow: hidden;
+  }
+  .raid-bar-fill {
+    height: 100%; background: #64b5f6;
+    transition: width .5s linear;
+  }
+  .raid-time { color: #7a6f5a; font-size: 10px; }
+  .raid-empty { color: #5a4f3a; font-style: italic; text-align: center; padding: 12px 0; }
+
+  /* Bottom panel: players */
+  #panel-players {
+    bottom: 8px; left: 8px; right: 8px;
+    height: 140px;
+    display: flex; flex-direction: column;
+  }
+  #player-list {
+    flex: 1; overflow-y: auto;
+  }
+  .player-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 4px 8px;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+  }
+  .pl-nick { font-weight: bold; font-size: 12px; min-width: 80px; }
+  .pl-lvl { color: #7a6f5a; font-size: 11px; min-width: 40px; }
+  .pl-shield { color: #4fc3f7; font-size: 10px; }
+  .pl-res { color: #7a6f5a; font-size: 10px; }
+  .pl-attack {
+    padding: 2px 8px;
+    border: 1px solid #e06050; border-radius: 3px;
+    background: transparent; color: #e06050;
+    cursor: pointer; font-size: 10px;
+    font-family: inherit;
+    margin-left: auto;
+  }
+  .pl-attack:hover { background: rgba(224,96,80,.15); }
+
+  /* ═══ Toast / notifications ══════════════════ */
+  #toast-area {
+    position: fixed; top: 44px; left: 50%;
+    transform: translateX(-50%);
+    z-index: 30;
+    display: flex; flex-direction: column;
+    align-items: center; gap: 4px;
+  }
+  .toast {
+    padding: 8px 16px;
+    background: rgba(13,27,42,.95);
+    border: 1px solid #ffd700;
+    border-radius: 6px;
+    color: #ffd700;
+    font-size: 12px;
+    animation: toastIn .3s ease, toastOut .3s ease 3.7s forwards;
+  }
+  .toast.bad { border-color: #e06050; color: #e06050; }
+  .toast.good { border-color: #8bc34a; color: #8bc34a; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
+
+  /* ═══ Chat ════════════════════════════════════ */
+  #chat-box {
+    position: fixed; bottom: 156px; left: 8px;
+    width: 280px; max-height: 140px;
+    overflow-y: auto;
+    z-index: 15;
+    font-size: 11px;
+    pointer-events: none;
+  }
+  .chat-line { padding: 1px 0; opacity: .8; }
+  .chat-from { color: #ffd700; font-weight: bold; }
+  .chat-text { color: #d4c5a9; }
+
+  /* ═══ Offline gains modal ════════════════════ */
+  #offline-modal {
+    position: fixed; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.6);
+    z-index: 50;
+  }
+  #offline-modal .modal-box {
+    background: #1a1510;
+    border: 2px solid #ffd700;
+    border-radius: 10px;
+    padding: 24px 32px;
+    text-align: center;
+    max-width: 300px;
+  }
+  #offline-modal h2 {
+    color: #ffd700; margin-bottom: 12px; font-size: 18px;
+  }
+  #offline-modal .gains { color: #d4c5a9; font-size: 14px; line-height: 1.6; margin-bottom: 16px; }
+  #offline-modal .gains b { color: #e06050; }
+  #offline-modal button {
+    padding: 8px 24px;
+    border: 1px solid #ffd700; border-radius: 4px;
+    background: #3a3020; color: #ffd700;
+    cursor: pointer; font-size: 13px; font-family: inherit;
+  }
+
+  /* ═══ Mobile ══════════════════════════════════ */
+  @media (max-width: 700px) {
+    #panel-upgrades { width: 150px; font-size: 11px; }
+    #panel-raids { width: 150px; font-size: 11px; }
+    #panel-players { height: 100px; }
+    .hud-item { padding: 4px 6px; }
+    .hud-item .label { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ═══ Login Screen ═══════════════════════════ -->
+<div id="login-screen" class="overlay">
+  <button id="login-lang-btn">RU</button>
+  <h1>PirateIsles</h1>
+  <div class="sub" id="login-sub">Idle PvPvE Pirate Strategy</div>
+  <input id="input-nick" type="text" placeholder="" maxlength="16" autocomplete="off">
+  <input id="input-password" type="password" placeholder="" maxlength="32" autocomplete="off">
+  <button class="big-btn" id="btn-join"></button>
+  <div class="error" id="login-error"></div>
+</div>
+
+<!-- ═══ Game Screen ════════════════════════════ -->
+<div id="game-screen">
+  <canvas id="canvas-main"></canvas>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="nick-label" id="hud-nick">—</div>
+    <div class="hud-item rum">
+      <span class="label" data-i18n="rum">Rum</span>
+      <span class="value" id="hud-rum">0</span>
+    </div>
+    <div class="hud-item gold">
+      <span class="label" data-i18n="gold">Gold</span>
+      <span class="value" id="hud-gold">0</span>
+    </div>
+    <div class="hud-item wood">
+      <span class="label" data-i18n="wood">Wood</span>
+      <span class="value" id="hud-wood">0</span>
+    </div>
+    <div class="hud-item boats">
+      <span class="label" data-i18n="boats">Boats</span>
+      <span class="value" id="hud-boats">0/0</span>
+    </div>
+    <div class="hud-shield" id="hud-shield"></div>
+    <button id="hud-lang-btn">RU</button>
+  </div>
+
+  <!-- Upgrade panel -->
+  <div class="panel" id="panel-upgrades">
+    <h3 data-i18n="buildings">Buildings</h3>
+    <div class="upgrade-row">
+      <div class="u-info">
+        <div class="u-name" data-i18n="tavern">Tavern</div>
+        <div class="u-lvl"><span data-i18n="lvl_short">Lv</span>.<span id="u-tavern-lvl">1</span></div>
+        <div class="u-cost"><span id="u-tavern-cost">400</span> <span data-i18n="rum_short">rum</span></div>
+      </div>
+      <button class="upgrade-btn" id="btn-up-tavern" data-i18n="up_btn">Up</button>
+    </div>
+    <div class="upgrade-row">
+      <div class="u-info">
+        <div class="u-name" data-i18n="dock">Dock</div>
+        <div class="u-lvl"><span data-i18n="lvl_short">Lv</span>.<span id="u-dock-lvl">1</span></div>
+        <div class="u-cost"><span id="u-dock-cost">300</span> <span data-i18n="wood_short">wood</span></div>
+      </div>
+      <button class="upgrade-btn" id="btn-up-dock" data-i18n="up_btn">Up</button>
+    </div>
+    <div class="upgrade-row">
+      <div class="u-info">
+        <div class="u-name" data-i18n="cannons">Cannons</div>
+        <div class="u-lvl"><span data-i18n="lvl_short">Lv</span>.<span id="u-cannon-lvl">0</span></div>
+        <div class="u-cost"><span id="u-cannon-cost-rum">300</span>r + <span id="u-cannon-cost-wood">200</span>w</div>
+      </div>
+      <button class="upgrade-btn" id="btn-up-cannons" data-i18n="up_btn">Up</button>
+    </div>
+    <div class="upgrade-row">
+      <div class="u-info">
+        <div class="u-name" data-i18n="island">Island</div>
+        <div class="u-lvl"><span data-i18n="lvl_short">Lv</span>.<span id="u-island-lvl">1</span></div>
+        <div class="u-cost"><span id="u-island-cost-rum">1000</span>r + <span id="u-island-cost-wood">500</span>w</div>
+      </div>
+      <button class="upgrade-btn" id="btn-up-island" data-i18n="up_btn">Up</button>
+    </div>
+    <div style="margin-top:8px; color:#7a6f5a; font-size:10px;">
+      <span data-i18n="rum_per_sec">Rum/sec</span>: <span id="u-rum-rate" style="color:#e06050">2</span>
+      | Legacy: <span id="u-legacy" style="color:#ffd700">+0%</span>
+    </div>
+  </div>
+
+  <!-- Raids panel -->
+  <div class="panel" id="panel-raids">
+    <h3 data-i18n="raids">Raids</h3>
+    <button id="btn-send-raid" data-i18n="send_raid">Send Boat on Raid</button>
+    <div id="raid-list">
+      <div class="raid-empty" data-i18n="no_raids">No active raids</div>
+    </div>
+  </div>
+
+  <!-- Players panel -->
+  <div class="panel" id="panel-players">
+    <h3 data-i18n="other_pirates">Other Pirates</h3>
+    <div id="player-list"></div>
+  </div>
+
+  <!-- Toast area -->
+  <div id="toast-area"></div>
+
+  <!-- Chat -->
+  <div id="chat-box"></div>
+
+  <!-- Offline gains modal -->
+  <div id="offline-modal">
+    <div class="modal-box">
+      <h2 id="offline-title">Welcome Back!</h2>
+      <div class="gains" id="offline-gains-text"></div>
+      <button id="btn-offline-ok">Arrr!</button>
+    </div>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script>
+(() => {
+  'use strict';
+
+  // ══════════════════════════════════════════════
+  // ── 2D Simplex Noise (inline, seedable) ──────
+  // ══════════════════════════════════════════════
+  function createSimplexNoise(seed) {
+    const F2 = 0.5 * (Math.sqrt(3) - 1);
+    const G2 = (3 - Math.sqrt(3)) / 6;
+    const grad2 = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,-1],[1,-1],[-1,1]];
+    const p = new Uint8Array(256);
+    for (let i = 0; i < 256; i++) p[i] = i;
+    let n = 256;
+    const s = (seed || 0) | 0;
+    for (let i = 0; i < 256; i++) {
+      n = (n + s + i) | 0;
+      const j = ((n * 1103515245 + 12345) >>> 0) % 256;
+      [p[i], p[j]] = [p[j], p[i]];
+    }
+    const perm = new Uint8Array(512);
+    for (let i = 0; i < 512; i++) perm[i] = p[i & 255];
+
+    function dot2(g, x, y) { return g[0] * x + g[1] * y; }
+
+    return function noise2D(x, y) {
+      const s = (x + y) * F2;
+      const i = Math.floor(x + s) | 0;
+      const j = Math.floor(y + s) | 0;
+      const t = (i + j) * G2;
+      const X0 = i - t;
+      const Y0 = j - t;
+      const x0 = x - X0;
+      const y0 = y - Y0;
+      const i1 = x0 > y0 ? 1 : 0;
+      const j1 = x0 > y0 ? 0 : 1;
+      const x1 = x0 - i1 + G2;
+      const y1 = y0 - j1 + G2;
+      const x2 = x0 - 1 + 2 * G2;
+      const y2 = y0 - 1 + 2 * G2;
+      const ii = i & 255;
+      const jj = j & 255;
+      const gi0 = perm[ii + perm[jj]] % 8;
+      const gi1 = perm[ii + i1 + perm[jj + j1]] % 8;
+      const gi2 = perm[ii + 1 + perm[jj + 1]] % 8;
+      let n0 = 0, n1 = 0, n2 = 0;
+      let t0 = 0.5 - x0 * x0 - y0 * y0;
+      if (t0 >= 0) { const t02 = t0 * t0; n0 = t02 * t02 * dot2(grad2[gi0], x0, y0); }
+      let t1 = 0.5 - x1 * x1 - y1 * y1;
+      if (t1 >= 0) { const t12 = t1 * t1; n1 = t12 * t12 * dot2(grad2[gi1], x1, y1); }
+      let t2 = 0.5 - x2 * x2 - y2 * y2;
+      if (t2 >= 0) { const t22 = t2 * t2; n2 = t22 * t22 * dot2(grad2[gi2], x2, y2); }
+      return 70 * (n0 + n1 + n2);
+    };
+  }
+
+  const simplex2D = createSimplexNoise(12345);
+
+  // ══════════════════════════════════════════════
+  // ── i18n ──────────────────────────────────────
+  // ══════════════════════════════════════════════
+  const STRINGS = {
+    en: {
+      // Login
+      subtitle: 'Idle PvPvE Pirate Strategy',
+      nick_placeholder: 'Your pirate name',
+      pw_placeholder: 'Password (optional)',
+      set_sail: 'Set Sail!',
+      nick_error: 'Nick: 3-16 characters',
+      // HUD
+      rum: 'Rum', gold: 'Gold', wood: 'Wood', boats: 'Boats',
+      rum_short: 'rum', wood_short: 'wood',
+      shield_h: 'Shield: {0}h',
+      // Buildings
+      buildings: 'Buildings',
+      tavern: 'Tavern', dock: 'Dock', cannons: 'Cannons', island: 'Island',
+      lvl_short: 'Lv',
+      up_btn: 'Up',
+      rum_per_sec: 'Rum/sec',
+      // Raids
+      raids: 'Raids',
+      send_raid: 'Send Boat on Raid',
+      no_raids: 'No active raids',
+      raid_n: 'Raid #{0}',
+      remaining: '{0} remaining',
+      // Players
+      other_pirates: 'Other Pirates',
+      no_players: 'No other pirates yet',
+      shielded: 'Shielded',
+      offline: '(offline)',
+      raid_btn: 'Raid',
+      // Toasts / messages
+      tavern_up: 'Tavern upgraded to Lv.{0}',
+      dock_up: 'Dock upgraded to Lv.{0}',
+      cannons_up: 'Cannons upgraded to Lv.{0}',
+      island_up: 'Island upgraded to Lv.{0}',
+      boat_sent: 'Boat sent! Returns in ~{0} min',
+      boat_returned: 'Boat returned! +{0} rum, +{1} wood, +{2} gold',
+      boat_lost: 'Boat lost at sea!',
+      attacked_by: 'Attacked by {0}! Lost {1}r, {2}g, {3}w',
+      raided_ok: 'Raided {0}! Stole {1}r, {2}g, {3}w',
+      confirm_attack: 'Attack {0}? You\'ll steal resources and lose 1 boat.',
+      disconnected: 'Disconnected from server',
+      // Offline modal
+      welcome_back: 'Welcome Back!',
+      away_for: 'You were away for <b>{0}h {1}m</b>',
+      earned: 'Earned: <b>{0}</b> rum',
+      arrr: 'Arrr!',
+      // Canvas
+      island_of: '{0}\'s Island',
+      level_n: 'Level {0}',
+      debris_label: 'Debris: {0} gold (collecting...)',
+      rum_sec_label: '+{0} rum/sec',
+    },
+    ru: {
+      subtitle: 'Idle PvPvE пиратская стратегия',
+      nick_placeholder: 'Имя пирата',
+      pw_placeholder: 'Пароль (необязательно)',
+      set_sail: 'В плавание!',
+      nick_error: 'Ник: 3-16 символов',
+      rum: 'Ром', gold: 'Золото', wood: 'Дерево', boats: 'Лодки',
+      rum_short: 'ром', wood_short: 'дер.',
+      shield_h: 'Щит: {0}ч',
+      buildings: 'Постройки',
+      tavern: 'Таверна', dock: 'Док', cannons: 'Пушки', island: 'Остров',
+      lvl_short: 'Ур',
+      up_btn: 'Ап',
+      rum_per_sec: 'Ром/сек',
+      raids: 'Рейды',
+      send_raid: 'Отправить лодку в рейд',
+      no_raids: 'Нет активных рейдов',
+      raid_n: 'Рейд #{0}',
+      remaining: '{0} осталось',
+      other_pirates: 'Другие пираты',
+      no_players: 'Других пиратов пока нет',
+      shielded: 'Щит',
+      offline: '(оффлайн)',
+      raid_btn: 'Рейд',
+      tavern_up: 'Таверна улучшена до ур.{0}',
+      dock_up: 'Док улучшен до ур.{0}',
+      cannons_up: 'Пушки улучшены до ур.{0}',
+      island_up: 'Остров улучшен до ур.{0}',
+      boat_sent: 'Лодка отправлена! Вернётся через ~{0} мин',
+      boat_returned: 'Лодка вернулась! +{0} ром, +{1} дерево, +{2} золото',
+      boat_lost: 'Лодка потеряна в море!',
+      attacked_by: 'Атакован {0}! Потеряно {1}р, {2}з, {3}д',
+      raided_ok: 'Ограбил {0}! Украдено {1}р, {2}з, {3}д',
+      confirm_attack: 'Атаковать {0}? Вы украдёте ресурсы и потеряете 1 лодку.',
+      disconnected: 'Отключено от сервера',
+      welcome_back: 'С возвращением!',
+      away_for: 'Вас не было <b>{0}ч {1}м</b>',
+      earned: 'Получено: <b>{0}</b> рома',
+      arrr: 'Йо-хо-хо!',
+      island_of: 'Остров {0}',
+      level_n: 'Уровень {0}',
+      debris_label: 'Обломки: {0} золота (сбор...)',
+      rum_sec_label: '+{0} ром/сек',
+    }
+  };
+
+  let currentLang = localStorage.getItem('pirateLang') || 'en';
+
+  function t(key, ...args) {
+    let s = (STRINGS[currentLang] && STRINGS[currentLang][key]) || STRINGS.en[key] || key;
+    args.forEach((v, i) => { s = s.replace(`{${i}}`, v); });
+    return s;
+  }
+
+  function applyLang() {
+    localStorage.setItem('pirateLang', currentLang);
+    // Update all data-i18n elements
+    document.querySelectorAll('[data-i18n]').forEach(el => {
+      const key = el.getAttribute('data-i18n');
+      el.textContent = t(key);
+    });
+    // Update placeholders and specific elements
+    inputNick.placeholder = t('nick_placeholder');
+    inputPassword.placeholder = t('pw_placeholder');
+    btnJoin.textContent = t('set_sail');
+    document.getElementById('login-sub').textContent = t('subtitle');
+    document.getElementById('offline-title').textContent = t('welcome_back');
+    btnOfflineOk.textContent = t('arrr');
+    // Lang buttons show the OTHER language
+    const other = currentLang === 'en' ? 'RU' : 'EN';
+    document.getElementById('login-lang-btn').textContent = other;
+    document.getElementById('hud-lang-btn').textContent = other;
+  }
+
+  function toggleLang() {
+    currentLang = currentLang === 'en' ? 'ru' : 'en';
+    applyLang();
+    // Re-render dynamic UI
+    updateHUD();
+    updatePlayerList();
+    updateRaidPanel();
+  }
+
+  // ── DOM refs ──────────────────────────────────
+  const loginScreen = document.getElementById('login-screen');
+  const gameScreen = document.getElementById('game-screen');
+  const canvas = document.getElementById('canvas-main');
+  const ctx = canvas.getContext('2d');
+
+  const inputNick = document.getElementById('input-nick');
+  const inputPassword = document.getElementById('input-password');
+  const btnJoin = document.getElementById('btn-join');
+  const loginError = document.getElementById('login-error');
+
+  const hudNick = document.getElementById('hud-nick');
+  const hudRum = document.getElementById('hud-rum');
+  const hudGold = document.getElementById('hud-gold');
+  const hudWood = document.getElementById('hud-wood');
+  const hudBoats = document.getElementById('hud-boats');
+  const hudShield = document.getElementById('hud-shield');
+
+  const uTavernLvl = document.getElementById('u-tavern-lvl');
+  const uTavernCost = document.getElementById('u-tavern-cost');
+  const uDockLvl = document.getElementById('u-dock-lvl');
+  const uDockCost = document.getElementById('u-dock-cost');
+  const uCannonLvl = document.getElementById('u-cannon-lvl');
+  const uCannonCostRum = document.getElementById('u-cannon-cost-rum');
+  const uCannonCostWood = document.getElementById('u-cannon-cost-wood');
+  const uIslandLvl = document.getElementById('u-island-lvl');
+  const uIslandCostRum = document.getElementById('u-island-cost-rum');
+  const uIslandCostWood = document.getElementById('u-island-cost-wood');
+  const uRumRate = document.getElementById('u-rum-rate');
+  const uLegacy = document.getElementById('u-legacy');
+
+  const btnUpTavern = document.getElementById('btn-up-tavern');
+  const btnUpDock = document.getElementById('btn-up-dock');
+  const btnUpCannons = document.getElementById('btn-up-cannons');
+  const btnUpIsland = document.getElementById('btn-up-island');
+  const btnSendRaid = document.getElementById('btn-send-raid');
+
+  const raidList = document.getElementById('raid-list');
+  const playerList = document.getElementById('player-list');
+  const toastArea = document.getElementById('toast-area');
+  const chatBox = document.getElementById('chat-box');
+  const offlineModal = document.getElementById('offline-modal');
+  const offlineGainsText = document.getElementById('offline-gains-text');
+  const btnOfflineOk = document.getElementById('btn-offline-ok');
+
+  // Lang toggle buttons
+  document.getElementById('login-lang-btn').addEventListener('click', toggleLang);
+  document.getElementById('hud-lang-btn').addEventListener('click', toggleLang);
+
+  // ── State ─────────────────────────────────────
+  let myNick = null;
+  let playersArr = [];
+  let myRaids = [];
+  let animFrame = 0;
+  let chatLines = [];
+
+  // Balance constants (mirror server)
+  const TAVERN_BASE_COST = 400;
+  const DOCK_BASE_COST = 300;
+  const CANNON_BASE_COST_RUM = 300;
+  const CANNON_BASE_COST_WOOD = 200;
+  const COST_MULT = 2;
+  const BASE_RUM = 2;
+  const RUM_PER_TAV = 1;
+
+  // ── Socket ────────────────────────────────────
+  const socket = io();
+
+  // ── Canvas resize ─────────────────────────────
+  function resize() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  // ── Helpers ───────────────────────────────────
+  function me() {
+    return playersArr.find(p => p.nick === myNick);
+  }
+
+  function showToast(text, type = '') {
+    const el = document.createElement('div');
+    el.className = 'toast' + (type ? ' ' + type : '');
+    el.textContent = text;
+    toastArea.appendChild(el);
+    setTimeout(() => el.remove(), 4000);
+  }
+
+  function addChat(from, text) {
+    chatLines.push({ from, text });
+    if (chatLines.length > 30) chatLines.shift();
+    renderChat();
+  }
+
+  function renderChat() {
+    chatBox.innerHTML = chatLines.map(l =>
+      `<div class="chat-line"><span class="chat-from">[${l.from}]</span> <span class="chat-text">${l.text}</span></div>`
+    ).join('');
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+
+  function formatNum(n) {
+    if (n >= 1000000) return (n / 1000000).toFixed(1) + 'M';
+    if (n >= 1000) return (n / 1000).toFixed(1) + 'K';
+    return Math.floor(n).toString();
+  }
+
+  // ── Login ─────────────────────────────────────
+  const savedNick = localStorage.getItem('pirateNick');
+  if (savedNick) inputNick.value = savedNick;
+
+  // Apply language on load
+  applyLang();
+
+  btnJoin.addEventListener('click', tryJoin);
+  inputNick.addEventListener('keydown', (e) => { if (e.key === 'Enter') inputPassword.focus(); });
+  inputPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryJoin(); });
+
+  function tryJoin() {
+    const nick = inputNick.value.trim();
+    const password = inputPassword.value || '';
+    loginError.textContent = '';
+
+    if (nick.length < 3 || nick.length > 16) {
+      loginError.textContent = t('nick_error');
+      return;
+    }
+
+    btnJoin.disabled = true;
+    socket.emit('join', { nick, password }, (resp) => {
+      btnJoin.disabled = false;
+      if (!resp.ok) {
+        loginError.textContent = resp.msg;
+        return;
+      }
+
+      myNick = nick;
+      localStorage.setItem('pirateNick', nick);
+      hudNick.textContent = nick;
+
+      loginScreen.style.display = 'none';
+      gameScreen.style.display = 'block';
+
+      // Оффлайн-прогресс
+      if (resp.restored && resp.offlineGains && resp.offlineGains.rum > 0) {
+        const g = resp.offlineGains;
+        const hours = Math.floor(g.seconds / 3600);
+        const mins = Math.floor((g.seconds % 3600) / 60);
+        offlineGainsText.innerHTML = `
+          ${t('away_for', hours, mins)}<br>
+          ${t('earned', formatNum(g.rum))}
+        `;
+        document.getElementById('offline-title').textContent = t('welcome_back');
+        btnOfflineOk.textContent = t('arrr');
+        offlineModal.style.display = 'flex';
+      }
+
+      requestAnimationFrame(draw);
+    });
+  }
+
+  btnOfflineOk.addEventListener('click', () => {
+    offlineModal.style.display = 'none';
+  });
+
+  // ── Socket events ─────────────────────────────
+  socket.on('state', (data) => {
+    playersArr = data.players || [];
+    updateHUD();
+    updatePlayerList();
+  });
+
+  socket.on('raidsUpdate', (raids) => {
+    myRaids = raids;
+    updateRaidPanel();
+  });
+
+  socket.on('raidResult', (data) => {
+    if (data.success) {
+      const l = data.loot;
+      showToast(t('boat_returned', l.rum, l.wood, l.gold), 'good');
+    } else if (data.boatLost) {
+      showToast(t('boat_lost'), 'bad');
+    }
+  });
+
+  socket.on('attacked', (data) => {
+    showToast(t('attacked_by', data.by, data.lost.rum, data.lost.gold, data.lost.wood), 'bad');
+  });
+
+  socket.on('chat', (data) => {
+    addChat(data.from, data.text);
+  });
+
+  socket.on('disconnect', () => {
+    showToast(t('disconnected'), 'bad');
+  });
+
+  socket.on('connect', () => {
+    if (myNick) {
+      const password = inputPassword.value || '';
+      socket.emit('join', { nick: myNick, password }, (resp) => {
+        if (resp.ok) console.log('[RECONNECT] Restored session for', myNick);
+      });
+    }
+  });
+
+  // ── HUD update ────────────────────────────────
+  function updateHUD() {
+    const m = me();
+    if (!m) return;
+
+    hudRum.textContent = formatNum(m.rum);
+    hudGold.textContent = formatNum(m.gold);
+    hudWood.textContent = formatNum(m.wood);
+    hudBoats.textContent = `${m.boats}/${m.boats_max}`;
+
+    if (m.shield_until > Date.now()) {
+      const remainH = Math.ceil((m.shield_until - Date.now()) / 3600000);
+      hudShield.textContent = t('shield_h', remainH);
+      hudShield.style.display = '';
+    } else {
+      hudShield.style.display = 'none';
+    }
+
+    uTavernLvl.textContent = m.tavern_level;
+    uTavernCost.textContent = formatNum(Math.floor(TAVERN_BASE_COST * Math.pow(COST_MULT, m.tavern_level - 1)));
+    uDockLvl.textContent = m.dock_level;
+    uDockCost.textContent = formatNum(Math.floor(DOCK_BASE_COST * Math.pow(COST_MULT, m.dock_level - 1)));
+    uCannonLvl.textContent = m.cannon_level;
+    uCannonCostRum.textContent = formatNum(Math.floor(CANNON_BASE_COST_RUM * Math.pow(COST_MULT, m.cannon_level)));
+    uCannonCostWood.textContent = formatNum(Math.floor(CANNON_BASE_COST_WOOD * Math.pow(COST_MULT, m.cannon_level)));
+    uIslandLvl.textContent = m.island_level;
+    uIslandCostRum.textContent = formatNum(Math.floor(1000 * Math.pow(2, m.island_level - 1)));
+    uIslandCostWood.textContent = formatNum(Math.floor(500 * Math.pow(2, m.island_level - 1)));
+
+    const rate = BASE_RUM + (m.tavern_level - 1) * RUM_PER_TAV;
+    const legacyMult = 1 + m.legacy_bonus;
+    uRumRate.textContent = Math.floor(rate * legacyMult);
+    uLegacy.textContent = `+${(m.legacy_bonus * 100).toFixed(0)}%`;
+
+    btnUpTavern.disabled = m.rum < Math.floor(TAVERN_BASE_COST * Math.pow(COST_MULT, m.tavern_level - 1));
+    btnUpDock.disabled = m.wood < Math.floor(DOCK_BASE_COST * Math.pow(COST_MULT, m.dock_level - 1));
+    btnUpCannons.disabled = m.rum < Math.floor(CANNON_BASE_COST_RUM * Math.pow(COST_MULT, m.cannon_level)) ||
+                            m.wood < Math.floor(CANNON_BASE_COST_WOOD * Math.pow(COST_MULT, m.cannon_level));
+    btnUpIsland.disabled = m.rum < Math.floor(1000 * Math.pow(2, m.island_level - 1)) ||
+                           m.wood < Math.floor(500 * Math.pow(2, m.island_level - 1));
+    btnSendRaid.disabled = m.boats <= 0;
+  }
+
+  // ── Raid panel ────────────────────────────────
+  function updateRaidPanel() {
+    if (myRaids.length === 0) {
+      raidList.innerHTML = `<div class="raid-empty">${t('no_raids')}</div>`;
+      return;
+    }
+    raidList.innerHTML = myRaids.map((r, i) => {
+      const remainMin = Math.floor(r.remaining / 60000);
+      const remainSec = Math.floor((r.remaining % 60000) / 1000);
+      const progress = Math.min(1, 1 - (r.remaining / r.duration));
+      const timeStr = `${remainMin}:${String(remainSec).padStart(2, '0')}`;
+      return `<div class="raid-item">
+        <div>${t('raid_n', i + 1)}</div>
+        <div class="raid-bar"><div class="raid-bar-fill" style="width:${(progress * 100).toFixed(1)}%"></div></div>
+        <div class="raid-time">${t('remaining', timeStr)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  setInterval(() => {
+    let changed = false;
+    myRaids.forEach(r => {
+      if (r.remaining > 0) { r.remaining = Math.max(0, r.remaining - 1000); changed = true; }
+    });
+    if (changed) updateRaidPanel();
+  }, 1000);
+
+  // ── Player list ───────────────────────────────
+  function updatePlayerList() {
+    const others = playersArr.filter(p => p.nick !== myNick);
+    if (others.length === 0) {
+      playerList.innerHTML = `<div style="color:#5a4f3a;text-align:center;padding:12px">${t('no_players')}</div>`;
+      return;
+    }
+    playerList.innerHTML = others.map(p => {
+      const shielded = p.shield_until > Date.now();
+      const onlineStr = p.online ? '' : ` ${t('offline')}`;
+      return `<div class="player-row">
+        <span class="pl-nick" style="color:${p.color}">${p.nick}${onlineStr}</span>
+        <span class="pl-lvl">${t('lvl_short')}.${p.island_level}</span>
+        <span class="pl-res">${formatNum(p.rum)}r</span>
+        ${shielded ? `<span class="pl-shield">${t('shielded')}</span>` : ''}
+        ${!shielded ? `<button class="pl-attack" data-nick="${p.nick}">${t('raid_btn')}</button>` : ''}
+      </div>`;
+    }).join('');
+
+    playerList.querySelectorAll('.pl-attack').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const target = btn.getAttribute('data-nick');
+        if (!confirm(t('confirm_attack', target))) return;
+        socket.emit('attackPlayer', { targetNick: target }, (resp) => {
+          if (resp.ok) {
+            const s = resp.stolen;
+            showToast(t('raided_ok', target, s.rum, s.gold, s.wood), 'good');
+          } else {
+            showToast(resp.msg, 'bad');
+          }
+        });
+      });
+    });
+  }
+
+  // ── Upgrade buttons ───────────────────────────
+  btnUpTavern.addEventListener('click', () => {
+    socket.emit('upgradeTavern', (resp) => {
+      if (resp.ok) showToast(t('tavern_up', resp.tavern_level), 'good');
+      else showToast(resp.msg, 'bad');
+    });
+  });
+
+  btnUpDock.addEventListener('click', () => {
+    socket.emit('upgradeDock', (resp) => {
+      if (resp.ok) showToast(t('dock_up', resp.dock_level), 'good');
+      else showToast(resp.msg, 'bad');
+    });
+  });
+
+  btnUpCannons.addEventListener('click', () => {
+    socket.emit('upgradeCannons', (resp) => {
+      if (resp.ok) showToast(t('cannons_up', resp.cannon_level), 'good');
+      else showToast(resp.msg, 'bad');
+    });
+  });
+
+  btnUpIsland.addEventListener('click', () => {
+    socket.emit('upgradeIsland', (resp) => {
+      if (resp.ok) showToast(t('island_up', resp.island_level), 'good');
+      else showToast(resp.msg, 'bad');
+    });
+  });
+
+  btnSendRaid.addEventListener('click', () => {
+    socket.emit('sendRaid', (resp) => {
+      if (resp.ok) {
+        const min = Math.floor(resp.duration / 60000);
+        showToast(t('boat_sent', min), 'good');
+      } else {
+        showToast(resp.msg, 'bad');
+      }
+    });
+  });
+
+  // ══════════════════════════════════════════════
+  // ── Canvas rendering ──────────────────────────
+  // ══════════════════════════════════════════════
+  function draw() {
+    animFrame++;
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    drawWater(W, H);
+
+    const m = me();
+    if (m) {
+      drawIsland(W, H, m);
+      drawBuildings(W, H, m);
+      drawBoatsAtDock(W, H, m);
+      drawShieldDome(W, H, m);
+      drawDestructionOverlay(W, H, m);
+      drawRaidBoats(W, H, m);
+      drawInfoText(W, H, m);
+    }
+
+    requestAnimationFrame(draw);
+  }
+
+  // ── Water: single noise mesh + foam on crests only ──
+  function drawWater(W, H) {
+    const time = animFrame * 0.014;
+    const cell = 18; // grid step
+    const scale = 0.006; // noise scale
+
+    function height(x, y, t) {
+      let h = 0;
+      let amp = 1;
+      let f = 1;
+      for (let o = 0; o < 4; o++) {
+        const nx = x * scale * f + t * (0.3 + o * 0.12) + o * 5;
+        const ny = y * scale * f + t * (0.2 + o * 0.1) + o * 3;
+        h += simplex2D(nx, ny) * amp;
+        amp *= 0.55;
+        f *= 2;
+      }
+      return h * 0.008;
+    }
+
+    // 1) Deep ocean gradient
+    const bg = ctx.createRadialGradient(W * 0.5, H * 0.5, 0, W * 0.5, H * 0.5, W * 0.65);
+    bg.addColorStop(0, '#1565c0');
+    bg.addColorStop(0.4, '#0d47a1');
+    bg.addColorStop(0.75, '#0a3070');
+    bg.addColorStop(1, '#061a40');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+
+    // 2) Shaded wave mesh — one continuous surface, no stripes
+    const cols = Math.ceil(W / cell) + 2;
+    const rows = Math.ceil(H / cell) + 2;
+    const grid = [];
+    for (let gy = 0; gy < rows; gy++) {
+      const row = [];
+      for (let gx = 0; gx < cols; gx++) {
+        const px = (gx - 1) * cell;
+        const py = (gy - 1) * cell;
+        row.push(height(px, py, time));
+      }
+      grid.push(row);
+    }
+
+    const lightX = 0.3;
+    const lightY = -0.5;
+    for (let gy = 0; gy < rows - 1; gy++) {
+      for (let gx = 0; gx < cols - 1; gx++) {
+        const h00 = grid[gy][gx];
+        const h10 = grid[gy][gx + 1];
+        const h01 = grid[gy + 1][gx];
+        const h11 = grid[gy + 1][gx + 1];
+        const nx = (h00 - h10 + h01 - h11) * 0.5;
+        const ny = (h00 - h01 + h10 - h11) * 0.5;
+        const len = Math.sqrt(nx * nx + ny * ny + 0.02);
+        const lx = nx / len;
+        const ly = ny / len;
+        const dot = Math.max(0, lx * lightX + ly * lightY + 0.4);
+        const shade = 0.5 + dot * 0.5;
+        const px = (gx - 1) * cell;
+        const py = (gy - 1) * cell;
+        ctx.fillStyle = `hsl(210, 65%, ${28 + shade * 18}%)`;
+        ctx.globalAlpha = 0.82;
+        ctx.fillRect(px, py, cell + 1, cell + 1);
+      }
+    }
+    ctx.globalAlpha = 1;
+
+    // 3) Foam lines — only along wave crests (no dots)
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const foamStep = 5;
+    const contourThreshold = 0.1;
+    // Scan by rows: where noise is high and locally max, trace a foam line
+    for (let row = 0; row < H; row += Math.max(1, cell - 2)) {
+      const path = [];
+      for (let px = -foamStep; px <= W + foamStep; px += foamStep) {
+        const h = height(px, row, time);
+        const hl = height(px - foamStep, row, time);
+        const hr = height(px + foamStep, row, time);
+        const isCrest = h >= contourThreshold && h >= hl && h >= hr;
+        if (isCrest) {
+          path.push({ x: px, y: row + h * 25 });
+        } else if (path.length >= 2) {
+          ctx.strokeStyle = `rgba(255,255,255,${0.22 + Math.sin(time * 0.4 + row * 0.008) * 0.12})`;
+          ctx.lineWidth = 2.2;
+          ctx.beginPath();
+          ctx.moveTo(path[0].x, path[0].y);
+          for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+          ctx.stroke();
+          path.length = 0;
+        }
+      }
+      if (path.length >= 2) {
+        ctx.strokeStyle = `rgba(255,255,255,${0.22 + Math.sin(time * 0.4 + row * 0.008) * 0.12})`;
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        ctx.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+        ctx.stroke();
+      }
+    }
+    // Same along columns for crossing foam (net of crests)
+    for (let col = 0; col < W; col += Math.max(1, cell - 2)) {
+      const path = [];
+      for (let py = -foamStep; py <= H + foamStep; py += foamStep) {
+        const h = height(col, py, time);
+        const ht = height(col, py - foamStep, time);
+        const hb = height(col, py + foamStep, time);
+        const isCrest = h >= contourThreshold && h >= ht && h >= hb;
+        if (isCrest) {
+          path.push({ x: col + h * 25, y: py });
+        } else if (path.length >= 2) {
+          ctx.strokeStyle = `rgba(255,255,255,${0.15 + Math.sin(time * 0.35 + col * 0.008) * 0.08})`;
+          ctx.lineWidth = 1.6;
+          ctx.beginPath();
+          ctx.moveTo(path[0].x, path[0].y);
+          for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+          ctx.stroke();
+          path.length = 0;
+        }
+      }
+      if (path.length >= 2) {
+        ctx.strokeStyle = `rgba(255,255,255,${0.15 + Math.sin(time * 0.35 + col * 0.008) * 0.08})`;
+        ctx.lineWidth = 1.6;
+        ctx.beginPath();
+        ctx.moveTo(path[0].x, path[0].y);
+        for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // ── Island ────────────────────────────────────
+  function drawIsland(W, H, m) {
+    const cx = W / 2;
+    const cy = H / 2 - 20;
+    const baseSize = 70 + m.island_level * 12;
+    const rx = baseSize;
+    const ry = baseSize * 0.65;
+
+    // Island shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(cx + 4, cy + 6, rx + 5, ry + 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Sand/beach ring
+    ctx.fillStyle = '#c2b280';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx + 6, ry + 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Island body
+    const islandColors = ['#2d6b30', '#8b7d3c', '#6b2d2d'];
+    ctx.fillStyle = islandColors[m.destruction_state] || islandColors[0];
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Grass/terrain texture
+    ctx.fillStyle = 'rgba(0,0,0,0.1)';
+    const seed = m.nick.length * 7 + m.island_level;
+    for (let i = 0; i < 12; i++) {
+      const angle = (seed + i * 31) % 360 * (Math.PI / 180);
+      const dist = ((seed + i * 17) % 50 + 10) * (baseSize / 100);
+      const dx = cx + Math.cos(angle) * dist;
+      const dy = cy + Math.sin(angle) * dist * 0.65;
+      ctx.beginPath();
+      ctx.arc(dx, dy, 3 + (i % 3), 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Island name
+    ctx.fillStyle = '#ffd700';
+    ctx.font = 'bold 16px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(t('island_of', m.nick), cx, cy - ry - 20);
+
+    ctx.fillStyle = '#d4c5a9';
+    ctx.font = '12px Georgia, serif';
+    ctx.fillText(t('level_n', m.island_level), cx, cy - ry - 6);
+  }
+
+  function drawBuildings(W, H, m) {
+    const cx = W / 2;
+    const cy = H / 2 - 20;
+    const baseSize = 70 + m.island_level * 12;
+
+    // Tavern
+    const tavX = cx - baseSize * 0.4;
+    const tavY = cy - baseSize * 0.2;
+    ctx.fillStyle = '#8b4513';
+    ctx.fillRect(tavX - 12, tavY - 12, 24, 20);
+    ctx.fillStyle = '#654321';
+    ctx.beginPath();
+    ctx.moveTo(tavX - 15, tavY - 12);
+    ctx.lineTo(tavX, tavY - 22);
+    ctx.lineTo(tavX + 15, tavY - 12);
+    ctx.fill();
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '8px Georgia';
+    ctx.textAlign = 'center';
+    ctx.fillText(`${t('tavern').substring(0,3)} ${m.tavern_level}`, tavX, tavY + 18);
+
+    // Dock
+    const dockX = cx + baseSize * 0.3;
+    const dockY = cy + baseSize * 0.45;
+    ctx.fillStyle = '#654321';
+    ctx.fillRect(dockX - 15, dockY - 4, 30, 8);
+    ctx.fillRect(dockX + 12, dockY - 12, 4, 16);
+    ctx.fillStyle = '#ffd700';
+    ctx.font = '8px Georgia';
+    ctx.fillText(`${t('dock').substring(0,3)} ${m.dock_level}`, dockX, dockY + 16);
+
+    // Cannons
+    if (m.cannon_level > 0) {
+      const canX = cx + baseSize * 0.55;
+      const canY = cy - baseSize * 0.1;
+      for (let i = 0; i < Math.min(m.cannon_level, 5); i++) {
+        ctx.fillStyle = '#555';
+        ctx.beginPath();
+        ctx.arc(canX, canY + i * 14 - 14, 5, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#333';
+        ctx.fillRect(canX + 3, canY + i * 14 - 16, 10, 4);
+      }
+      ctx.fillStyle = '#ffd700';
+      ctx.font = '8px Georgia';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${t('cannons').substring(0,3)} ${m.cannon_level}`, canX + 5, canY + Math.min(m.cannon_level, 5) * 14 + 4);
+    }
+  }
+
+  function drawBoatsAtDock(W, H, m) {
+    const cx = W / 2;
+    const cy = H / 2 - 20;
+    const baseSize = 70 + m.island_level * 12;
+    const dockX = cx + baseSize * 0.3;
+    const dockY = cy + baseSize * 0.45;
+
+    for (let i = 0; i < Math.min(m.boats, 6); i++) {
+      const bx = dockX - 20 - i * 12;
+      const by = dockY + 10 + Math.sin(animFrame * 0.05 + i) * 2;
+      ctx.fillStyle = '#8b4513';
+      ctx.beginPath();
+      ctx.moveTo(bx - 6, by);
+      ctx.lineTo(bx + 6, by);
+      ctx.lineTo(bx + 4, by + 4);
+      ctx.lineTo(bx - 4, by + 4);
+      ctx.fill();
+      ctx.fillStyle = '#f5f5dc';
+      ctx.beginPath();
+      ctx.moveTo(bx, by - 8);
+      ctx.lineTo(bx + 5, by);
+      ctx.lineTo(bx - 1, by);
+      ctx.fill();
+    }
+  }
+
+  function drawShieldDome(W, H, m) {
+    if (m.shield_until <= Date.now()) return;
+
+    const cx = W / 2;
+    const cy = H / 2 - 20;
+    const baseSize = 70 + m.island_level * 12;
+    const r = baseSize + 30;
+
+    const pulse = 0.15 + Math.sin(animFrame * 0.03) * 0.05;
+    ctx.strokeStyle = `rgba(79, 195, 247, ${pulse + 0.1})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, r, r * 0.7, 0, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.fillStyle = `rgba(79, 195, 247, ${pulse * 0.3})`;
+    ctx.fill();
+  }
+
+  function drawDestructionOverlay(W, H, m) {
+    if (m.destruction_state === 0) return;
+
+    const cx = W / 2;
+    const cy = H / 2 - 20;
+    const baseSize = 70 + m.island_level * 12;
+
+    ctx.globalAlpha = 0.4;
+    if (m.destruction_state >= 1) {
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 2;
+      for (let i = 0; i < 4; i++) {
+        const angle = (i * 90 + 30) * (Math.PI / 180);
+        const d = baseSize * 0.3;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(angle) * d, cy + Math.sin(angle) * d * 0.65);
+        ctx.lineTo(cx + Math.cos(angle) * (d + 15), cy + Math.sin(angle) * (d + 15) * 0.65);
+        ctx.stroke();
+      }
+    }
+    if (m.destruction_state >= 2) {
+      for (let i = 0; i < 6; i++) {
+        const sx = cx + (Math.random() - 0.5) * baseSize;
+        const sy = cy - baseSize * 0.3 - Math.random() * 30 - (animFrame * 0.3 + i * 10) % 40;
+        ctx.fillStyle = 'rgba(80,80,80,0.3)';
+        ctx.beginPath();
+        ctx.arc(sx, sy, 4 + Math.random() * 4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function drawRaidBoats(W, H, m) {
+    if (myRaids.length === 0) return;
+
+    myRaids.forEach((r, i) => {
+      const progress = Math.min(1, 1 - (r.remaining / r.duration));
+      const angle = -Math.PI / 2 + (i * 0.8 - (myRaids.length - 1) * 0.4);
+      const dist = 120 + progress * 200;
+      const bx = W / 2 + Math.cos(angle) * dist;
+      const by = H / 2 - 20 + Math.sin(angle) * dist * 0.5;
+
+      const bob = Math.sin(animFrame * 0.06 + i) * 2;
+
+      // Wake trail
+      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let t = 0; t < 20; t++) {
+        const tp = Math.max(0, progress - t * 0.005);
+        const td = 120 + tp * 200;
+        const tx = W / 2 + Math.cos(angle) * td;
+        const ty = H / 2 - 20 + Math.sin(angle) * td * 0.5;
+        if (t === 0) ctx.moveTo(tx, ty + bob);
+        else ctx.lineTo(tx, ty);
+      }
+      ctx.stroke();
+
+      // Boat hull
+      ctx.fillStyle = '#8b4513';
+      ctx.beginPath();
+      ctx.moveTo(bx - 8, by + bob);
+      ctx.lineTo(bx + 8, by + bob);
+      ctx.lineTo(bx + 6, by + 5 + bob);
+      ctx.lineTo(bx - 6, by + 5 + bob);
+      ctx.fill();
+      // Sail
+      ctx.fillStyle = '#f5f5dc';
+      ctx.beginPath();
+      ctx.moveTo(bx, by - 12 + bob);
+      ctx.lineTo(bx + 7, by + bob);
+      ctx.lineTo(bx - 1, by + bob);
+      ctx.fill();
+
+      // Timer
+      const remainMin = Math.floor(r.remaining / 60000);
+      const remainSec = Math.floor((r.remaining % 60000) / 1000);
+      ctx.fillStyle = '#64b5f6';
+      ctx.font = '10px Georgia';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${remainMin}:${String(remainSec).padStart(2, '0')}`, bx, by - 16);
+    });
+  }
+
+  function drawInfoText(W, H, m) {
+    if (m.debris_gold > 0) {
+      ctx.fillStyle = '#ffd700';
+      ctx.font = '12px Georgia';
+      ctx.textAlign = 'center';
+      ctx.fillText(t('debris_label', formatNum(m.debris_gold)), W / 2, H / 2 + 100 + m.island_level * 8);
+    }
+
+    ctx.fillStyle = 'rgba(212,197,169,0.6)';
+    ctx.font = '11px Georgia';
+    ctx.textAlign = 'center';
+    const rate = BASE_RUM + (m.tavern_level - 1) * RUM_PER_TAV;
+    const legacyMult = 1 + m.legacy_bonus;
+    ctx.fillText(t('rum_sec_label', Math.floor(rate * legacyMult)), W / 2, H / 2 + 115 + m.island_level * 8);
+  }
+
+  // ── Start ─────────────────────────────────────
+  console.log('[CLIENT] PirateIsles client loaded');
+})();
+</script>
+</body>
+</html>

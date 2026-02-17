@@ -1,0 +1,14 @@
+{
+  "name": "pirate-isles",
+  "version": "0.1.0",
+  "description": "PirateIsles - browser PvPvE idle pirate strategy game",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "ioredis": "^5.4.1",
+    "socket.io": "^4.7.5"
+  }
+}
