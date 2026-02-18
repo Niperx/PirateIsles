@@ -15,6 +15,7 @@ const io = new Server(server, {
   cors: { origin: '*' }
 });
 
+app.use('/assets', express.static(path.join(__dirname, 'assets')));
 app.use(express.static(path.join(__dirname)));
 
 // ── Redis ─────────────────────────────────────────────────
@@ -77,6 +78,7 @@ const OFFLINE_MAX_HOURS = 12;
 // Авто-ремонт
 const AUTO_REPAIR_PER_HOUR = 0.015;     // 1.5% уровня острова в час
 const AUTO_REPAIR_RUM_PER_LVL = 10;     // стоимость ремонта в rum за тик за уровень
+const AUTO_REPAIR_PROGRESS_PER_SEC = AUTO_REPAIR_PER_HOUR / 3600; // доля прогресса за 1 сек на 1 уровень
 
 // Destruction / Legacy
 const LEGACY_BONUS_PER_DESTROY = 0.01;  // +1% дохода
@@ -88,13 +90,15 @@ const NICK_MAX = 16;
 // World map
 const MAP_W = 3000;
 const MAP_H = 2000;
-const PVP_SPEED = 250;          // world-units/sec для летящей лодки
+// Минимальная дистанция между стартовыми островами игроков на карте
+const PLAYER_MIN_DISTANCE = 450;
+const PVP_SPEED = 70;           // world-units/sec — медленнее, чем за ресурсами (BOAT_SPEED)
+const BOAT_SPEED = 120;         // world-units/sec — одинаковая скорость до острова (архипелаг, ресурсные)
 const PVP_MISSION_TICK = 100;   // ms — тик движения PvP-лодок
 
 // Архипелаг (острова-спутники у базы)
 const ARCHI_WOOD_PER_SEC   = 0.4;            // дерево/сек пассивно с каждого островка
-const ARCHI_HARVEST_MIN    = 15 * 1000;       // 15 сек (тест; боевое: ~10 мин)
-const ARCHI_HARVEST_MAX    = 15 * 1000;       // 15 сек (тест; боевое: ~20 мин)
+const ARCHI_HARVEST_MIN_MS = 5000;           // минимум 5 сек в пути (даже для близких островов)
 const ARCHI_DEPLETION      = 15 * 60 * 1000; // 15 мин до восстановления острова
 const ARCHI_LOSS_CHANCE    = 0.05;           // 5% шанс потери лодки
 // Лут по типу: [min, max]
@@ -107,8 +111,7 @@ const ARCHI_LOOT = {
 // ── In-memory хранилище ──────────────────────────────────
 // Острова ресурсов на мировой карте
 const RESOURCE_ISLAND_COUNT = 20;
-const RESOURCE_HARVEST_MIN  = 30 * 1000;       // 30 сек (тест; боевое: ~5 мин)
-const RESOURCE_HARVEST_MAX  = 60 * 1000;       // 60 сек (тест; боевое: ~15 мин)
+const RESOURCE_HARVEST_MIN_MS = 5000;         // минимум 5 сек в пути до ресурсного острова
 const RESOURCE_DEPLETION    = 2 * 60 * 1000;  // 2 мин (тест; боевое: ~30 мин)
 const RESOURCE_LOSS_CHANCE  = 0.08;
 const RESOURCE_LOOT = {
@@ -121,6 +124,7 @@ const players = {};       // ключ — nick
 const activeRaids = [];   // { playerId, startTime, duration, lootRoll }
 const pvpMissions = [];   // { id, owner, targetNick, x, y, tx, ty, speed, ownerColor }
 const resourceIslands = []; // { id, x, y, type, size, depleted_until }
+let resourceIslandsDirty = false; // флаг: нужно ли сохранить острова в Redis после деплеции
 
 // ── Утилиты ──────────────────────────────────────────────
 function randInt(min, max) {
@@ -131,6 +135,47 @@ function hashPassword(pw) {
   return crypto.createHash('sha256').update(pw).digest('hex');
 }
 
+// Подбор свободной позиции на мировой карте с учётом уже существующих игроков
+function findFreePlayerPosition() {
+  const margin = 300;
+  const maxAttempts = 50;
+  const minDist = PLAYER_MIN_DISTANCE;
+
+  const existing = Object.values(players);
+  // Если игроков ещё нет — можно ставить куда угодно в допустимую зону
+  if (existing.length === 0) {
+    return {
+      x: randInt(margin, MAP_W - margin),
+      y: randInt(margin, MAP_H - margin)
+    };
+  }
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const x = randInt(margin, MAP_W - margin);
+    const y = randInt(margin, MAP_H - margin);
+    let ok = true;
+    for (const p of existing) {
+      if (typeof p.pos_x !== 'number' || typeof p.pos_y !== 'number') continue;
+      const dx = p.pos_x - x;
+      const dy = p.pos_y - y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < minDist) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) {
+      return { x, y };
+    }
+  }
+
+  // Фолбэк: не нашли за разумное число попыток — ставим случайно
+  return {
+    x: randInt(margin, MAP_W - margin),
+    y: randInt(margin, MAP_H - margin)
+  };
+}
+
 // Детерминированный сид по нику (зеркало клиентской функции)
 function archSeed(nick, i) {
   let h = 0;
@@ -139,6 +184,21 @@ function archSeed(nick, i) {
 }
 function getArchipelagoCount(nick) {
   return 2 + (archSeed(nick, 0) % 3); // 2–4 островка
+}
+
+// Позиция острова архипелага относительно базы (зеркало клиентской getArchipelago)
+function getArchipelagoPosition(nick, idx) {
+  const count = getArchipelagoCount(nick);
+  if (idx < 0 || idx >= count) return { dx: 0, dy: 0 };
+  const s1 = archSeed(nick, idx * 3 + 1);
+  const s2 = archSeed(nick, idx * 3 + 2);
+  const baseAngleDeg = (360 / count) * idx + (s1 % 40) - 20;
+  const angle = (baseAngleDeg * Math.PI) / 180;
+  const dist = 190 + (s2 % 50);
+  return {
+    dx: Math.cos(angle) * dist,
+    dy: Math.sin(angle) * dist
+  };
 }
 
 function generateResourceIslands() {
@@ -198,6 +258,7 @@ function rumRate(player) {
 
 // ── Redis persistence (multi-key) ────────────────────────
 const PLAYERS_SET_KEY = 'players:nicks';
+const RESOURCE_ISLANDS_KEY = 'resourceIslands';
 
 function pKey(id) { return `player:${id}`; }
 function pResKey(id) { return `player:${id}:resources`; }
@@ -205,6 +266,7 @@ function pCdKey(id) { return `player:${id}:cooldowns`; }
 function pDestrKey(id) { return `player:${id}:destruction_state`; }
 function pLegacyKey(id) { return `player:${id}:legacy_bonus`; }
 function pDebrisKey(id) { return `player:${id}:debris`; }
+function pArchiDepletedKey(id) { return `player:${id}:archi_depleted`; }
 
 async function persistPlayer(id) {
   const p = players[id];
@@ -256,6 +318,15 @@ async function persistPlayer(id) {
     pipe.del(pDebrisKey(id));
   }
 
+  // Архипелаг: деплеция островов (сохраняем только актуальные timestamp)
+  const archiDep = p.archi_depleted || {};
+  const now = Date.now();
+  const archiDepFiltered = {};
+  for (const k of Object.keys(archiDep)) {
+    if (archiDep[k] > now) archiDepFiltered[k] = archiDep[k];
+  }
+  pipe.set(pArchiDepletedKey(id), JSON.stringify(archiDepFiltered));
+
   pipe.sadd(PLAYERS_SET_KEY, id);
 
   await pipe.exec();
@@ -273,6 +344,7 @@ async function removePlayer(id) {
   pipe.del(pDestrKey(id));
   pipe.del(pLegacyKey(id));
   pipe.del(pDebrisKey(id));
+  pipe.del(pArchiDepletedKey(id));
   pipe.srem(PLAYERS_SET_KEY, id);
   await pipe.exec();
 }
@@ -294,6 +366,7 @@ async function loadPlayersFromRedis() {
       pipe.get(pDestrKey(id));         // 3
       pipe.get(pLegacyKey(id));        // 4
       pipe.hgetall(pDebrisKey(id));    // 5
+      pipe.get(pArchiDepletedKey(id)); // 6
       const results = await pipe.exec();
 
       const base = results[0][1] || {};
@@ -302,6 +375,7 @@ async function loadPlayersFromRedis() {
       const destr = results[3][1];
       const legacy = results[4][1];
       const debris = results[5][1] || {};
+      const archiDepRaw = results[6][1];
 
       if (!base.nick) continue; // битая запись
 
@@ -329,9 +403,21 @@ async function loadPlayersFromRedis() {
         raid_cooldown: parseInt(cd.raid) || 0,
         pvp_cooldown: parseInt(cd.pvp) || 0,
         destruction_state: parseInt(destr) || 0,
+        repair_progress: 0,
         legacy_bonus: parseFloat(legacy) || 0,
         debris_gold: parseFloat(debris.gold) || 0,
-        debris_ttl: parseInt(debris.ttl) || 0
+        debris_ttl: parseInt(debris.ttl) || 0,
+        archi_raids: [],
+        resource_raids: [],
+        archi_depleted: (() => {
+          try {
+            const o = archiDepRaw ? JSON.parse(archiDepRaw) : {};
+            if (typeof o !== 'object' || o === null) return {};
+            const out = {};
+            for (const k of Object.keys(o)) out[k] = parseInt(o[k], 10) || 0;
+            return out;
+          } catch (_) { return {}; }
+        })()
       };
     } catch (e) {
       console.warn(`[REDIS] Failed to load player ${id}:`, e.message);
@@ -341,15 +427,54 @@ async function loadPlayersFromRedis() {
   return out;
 }
 
+// ── Ресурсные острова: загрузка/сохранение в Redis ───────
+async function loadResourceIslandsFromRedis() {
+  try {
+    const raw = await redis.get(RESOURCE_ISLANDS_KEY);
+    if (!raw) return null;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr) || arr.length === 0) return null;
+    // Валидация: каждый элемент должен иметь id, x, y, type, size, depleted_until
+    const valid = arr.filter(
+      i => typeof i.id === 'number' && typeof i.x === 'number' && typeof i.y === 'number' &&
+          typeof i.type === 'string' && typeof i.size === 'number' && typeof i.depleted_until === 'number'
+    );
+    if (valid.length === 0) return null;
+    console.log(`[REDIS] Loaded ${valid.length} resource islands from ${RESOURCE_ISLANDS_KEY}`);
+    return valid;
+  } catch (e) {
+    console.warn('[REDIS] loadResourceIslands failed:', e.message);
+    return null;
+  }
+}
+
+async function saveResourceIslandsToRedis() {
+  try {
+    const payload = JSON.stringify(resourceIslands.map(i => ({
+      id: i.id,
+      x: i.x,
+      y: i.y,
+      type: i.type,
+      size: i.size,
+      depleted_until: i.depleted_until
+    })));
+    await redis.set(RESOURCE_ISLANDS_KEY, payload);
+    console.log(`[REDIS] Saved ${resourceIslands.length} resource islands to ${RESOURCE_ISLANDS_KEY}`);
+  } catch (e) {
+    console.warn('[REDIS] saveResourceIslands failed:', e.message);
+  }
+}
+
 // ── Создание игрока ──────────────────────────────────────
 function createPlayer(nick, passwordHash = null) {
+  const pos = findFreePlayerPosition();
   return {
     id: nick,
     nick,
     password_hash: passwordHash,
     island_level: 1,
-    pos_x: randInt(300, MAP_W - 300),
-    pos_y: randInt(300, MAP_H - 300),
+    pos_x: pos.x,
+    pos_y: pos.y,
     last_active: Date.now(),
     online: true,
     rum: 0,
@@ -361,6 +486,7 @@ function createPlayer(nick, passwordHash = null) {
     boats: BASE_BOAT_CAPACITY,
     shield_until: 0,
     destruction_state: 0,
+    repair_progress: 0,
     legacy_bonus: 0,
     debris_gold: 0,
     debris_ttl: 0,
@@ -545,14 +671,17 @@ setInterval(() => {
     p.wood += ARCHI_WOOD_PER_SEC * getArchipelagoCount(p.nick);
     p.last_active = Date.now();
 
-    // Авто-ремонт (destruction_state > 0)
-    // 1.5% уровня в час → per-second: 0.015 / 3600 * island_level
+    // Авто-ремонт (destruction_state > 0): прогресс за тик, при 1.0 — снимаем одну стадию
     if (p.destruction_state > 0) {
       const repairCost = AUTO_REPAIR_RUM_PER_LVL * p.island_level;
       if (p.rum >= repairCost) {
         p.rum -= repairCost;
-        // Накапливаем прогресс ремонта — упрощённо: каждые ~1 час ремонт на 1 стадию
-        // TODO: реализовать плавный ремонт с аккумулятором прогресса
+        const progressGain = AUTO_REPAIR_PROGRESS_PER_SEC * p.island_level;
+        p.repair_progress = (p.repair_progress || 0) + progressGain;
+        if (p.repair_progress >= 1) {
+          p.repair_progress = 0;
+          p.destruction_state = Math.max(0, p.destruction_state - 1);
+        }
       }
     }
 
@@ -686,6 +815,7 @@ setInterval(() => {
 
       // Деплеция острова (общая для всех игроков)
       island.depleted_until = now3 + RESOURCE_DEPLETION;
+      resourceIslandsDirty = true;
 
       p.resource_raids.splice(i, 1);
 
@@ -701,6 +831,12 @@ setInterval(() => {
 
       persist(id);
     }
+  }
+
+  // Сохранение ресурсных островов в Redis при изменении depleted_until
+  if (resourceIslandsDirty) {
+    resourceIslandsDirty = false;
+    saveResourceIslandsToRedis().catch(err => console.warn('[REDIS] resourceIslands save error:', err.message));
   }
 }, RAID_CHECK_TICK);
 
@@ -860,9 +996,11 @@ io.on('connection', (socket) => {
     }
     p.wood -= cost;
     p.dock_level += 1;
+    const newCap = boatCapacity(p.dock_level);
+    p.boats = newCap; // при апгрейде даём полный набор лодок до нового лимита
     persist(currentNick);
-    console.log(`[UPGRADE] ${currentNick}: dock → ${p.dock_level} (cost ${cost} wood)`);
-    callback({ ok: true, dock_level: p.dock_level, wood: Math.floor(p.wood), boats_max: boatCapacity(p.dock_level) });
+    console.log(`[UPGRADE] ${currentNick}: dock → ${p.dock_level} (cost ${cost} wood), boats ${p.boats}/${newCap}`);
+    callback({ ok: true, dock_level: p.dock_level, wood: Math.floor(p.wood), boats: p.boats, boats_max: newCap });
   });
 
   // ── Апгрейд пушек ─────────────────────────────────────
@@ -966,10 +1104,12 @@ io.on('connection', (socket) => {
     const type = ARCHI_TYPES_SRV[s3 % ARCHI_TYPES_SRV.length];
 
     p.boats -= 1;
-    const duration = Math.floor(ARCHI_HARVEST_MIN + Math.random() * (ARCHI_HARVEST_MAX - ARCHI_HARVEST_MIN));
+    const pos = getArchipelagoPosition(currentNick, idx);
+    const distance = Math.sqrt(pos.dx * pos.dx + pos.dy * pos.dy);
+    const duration = Math.max(ARCHI_HARVEST_MIN_MS, Math.floor((distance / BOAT_SPEED) * 1000));
     p.archi_raids.push({ idx, startTime: Date.now(), duration, type });
 
-    console.log(`[ARCHI] ${currentNick}: harvesting island ${idx} (${type}), eta=${Math.round(duration/1000)}s`);
+    console.log(`[ARCHI] ${currentNick}: harvesting island ${idx} (${type}), dist=${Math.round(distance)}, eta=${Math.round(duration/1000)}s`);
     callback({ ok: true, duration, idx, type });
   });
 
@@ -1001,10 +1141,13 @@ io.on('connection', (socket) => {
     }
 
     p.boats -= 1;
-    const duration = Math.floor(RESOURCE_HARVEST_MIN + Math.random() * (RESOURCE_HARVEST_MAX - RESOURCE_HARVEST_MIN));
+    const dx = island.x - p.pos_x;
+    const dy = island.y - p.pos_y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    const duration = Math.max(RESOURCE_HARVEST_MIN_MS, Math.floor((distance / BOAT_SPEED) * 1000));
     p.resource_raids.push({ islandId, startTime: Date.now(), duration });
 
-    console.log(`[RES] ${currentNick}: harvesting island ${islandId} (${island.type}), eta=${Math.round(duration/1000)}s`);
+    console.log(`[RES] ${currentNick}: harvesting island ${islandId} (${island.type}), dist=${Math.round(distance)}, eta=${Math.round(duration/1000)}s`);
     callback({ ok: true, duration, islandId, type: island.type });
   });
 
@@ -1111,7 +1254,16 @@ async function start() {
     console.warn('[SYSTEM] Redis load failed, starting empty:', e.message);
   }
 
-  generateResourceIslands();
+  // Ресурсные острова: из Redis или генерация с сохранением
+  const loadedIslands = await loadResourceIslandsFromRedis();
+  if (loadedIslands && loadedIslands.length > 0) {
+    resourceIslands.length = 0;
+    resourceIslands.push(...loadedIslands);
+    console.log(`[WORLD] Using ${resourceIslands.length} resource islands from Redis`);
+  } else {
+    generateResourceIslands();
+    await saveResourceIslandsToRedis();
+  }
 
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, '0.0.0.0', () => {

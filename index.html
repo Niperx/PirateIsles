@@ -220,6 +220,12 @@
     transition: width .5s linear;
   }
   .raid-time { color: #834848; font-size: 10px; }
+  .raid-group-title {
+    color: #834848; font-size: 10px; font-weight: bold;
+    margin-top: 8px; margin-bottom: 4px;
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .raid-group-title:first-child { margin-top: 0; }
   .raid-empty { color: #834848; font-style: italic; text-align: center; padding: 14px 0; }
 
   /* Bottom panel: players */
@@ -269,18 +275,22 @@
     color: #ffd543;
     font-size: 12px;
     box-shadow: 0 3px 14px rgba(0,0,0,.5), 0 0 8px rgba(255,213,67,.15);
-    animation: toastIn .3s ease, toastOut .3s ease 3.7s forwards;
-  }
-  .toast.bad {
-    border-color: #ad5542; color: #ad5542;
-    box-shadow: 0 3px 14px rgba(0,0,0,.5), 0 0 8px rgba(173,85,66,.2);
+    animation: toastIn .35s ease, toastOut .35s ease 5.35s forwards;
   }
   .toast.good {
     border-color: #a8c060; color: #a8c060;
     box-shadow: 0 3px 14px rgba(0,0,0,.5), 0 0 8px rgba(168,192,96,.15);
   }
+  .toast.bad {
+    border-color: #ad5542; color: #ad5542;
+    box-shadow: 0 3px 14px rgba(0,0,0,.5), 0 0 8px rgba(173,85,66,.2);
+  }
+  .toast.info {
+    border-color: #89c4e1; color: #89c4e1;
+    box-shadow: 0 3px 14px rgba(0,0,0,.5), 0 0 8px rgba(137,196,225,.15);
+  }
   @keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
+  @keyframes toastOut { from { opacity: 1; transform: translateY(0); } to { opacity: 0; transform: translateY(-8px); } }
 
   /* ═══ Chat ════════════════════════════════════ */
   #chat-box {
@@ -367,6 +377,25 @@
   #btn-world-view:disabled { opacity: .35; cursor: default; color: #834848; }
   #btn-world-view.world-active { color: #ad5542; border-color: #ad5542; }
   #btn-world-view.world-active:hover:not(:disabled) { background: rgba(173,85,66,.18); }
+
+  /* ═══ Back to base (world map only) ═══════════ */
+  #btn-back-to-base {
+    position: fixed; left: 8px; bottom: 156px;
+    padding: 8px 14px;
+    border: 1px solid #834848; border-radius: 5px;
+    background: rgba(12,21,34,.92);
+    color: #ffd543; font-size: 12px; font-weight: bold;
+    cursor: pointer; font-family: inherit;
+    z-index: 16;
+    display: none;
+    transition: background .2s, border-color .2s;
+    box-shadow: 0 2px 10px rgba(0,0,0,.4);
+  }
+  #btn-back-to-base:hover {
+    background: rgba(216,139,70,.2);
+    border-color: #d88b46;
+  }
+  #btn-back-to-base.visible { display: block; }
 
   /* ═══ View fade overlay ══════════════════════ */
   #view-fade {
@@ -481,6 +510,13 @@
       <span data-i18n="rum_per_sec">Rum/sec</span>: <span id="u-rum-rate" style="color:#e06050">2</span>
       | Legacy: <span id="u-legacy" style="color:#ffd700">+0%</span>
     </div>
+    <div class="upgrade-row" id="debris-row" style="display:none; margin-top:8px;">
+      <div class="u-info">
+        <div class="u-name" style="color:#ffd700;">Debris</div>
+        <div class="u-cost"><span id="debris-gold-val">0</span> <span data-i18n="gold">gold</span></div>
+      </div>
+      <button class="upgrade-btn" id="btn-collect-debris" data-i18n="debris_collect_btn">Collect</button>
+    </div>
   </div>
 
   <!-- Raids panel -->
@@ -499,6 +535,7 @@
   </div>
 
   <!-- Minimap (скрыта в base mode) -->
+  <button type="button" id="btn-back-to-base" class="" title="">Back to base</button>
   <div id="minimap-wrap" style="display:none">
     <canvas id="minimap" width="180" height="120"></canvas>
     <div id="minimap-label">World Map</div>
@@ -604,6 +641,9 @@
       raids: 'Raids',
       send_raid: 'Send Boat on Raid',
       no_raids: 'No active raids',
+      raids_group_pve: 'PvE Raids',
+      raids_group_archi: 'Archipelago',
+      raids_group_resource: 'Resource Islands',
       raid_n: 'Raid #{0}',
       raid_archi: 'Archi #{0}',
       raid_res: 'Res. isl. #{0}',
@@ -654,7 +694,10 @@
       center_tip: 'Center',
       world_map_btn: '🗺 World Map',
       home_btn: '🏠 My Island',
+      back_to_base: 'Back to base',
       world_locked: 'Unlocks at Island Level {0}',
+      debris_collect_btn: 'Collect',
+      debris_collected: 'Collected {0} gold!',
     },
     ru: {
       subtitle: 'Idle PvPvE пиратская стратегия',
@@ -673,6 +716,9 @@
       raids: 'Рейды',
       send_raid: 'Отправить лодку в рейд',
       no_raids: 'Нет активных рейдов',
+      raids_group_pve: 'PvE рейды',
+      raids_group_archi: 'Архипелаг',
+      raids_group_resource: 'Ресурсные острова',
       raid_n: 'Рейд #{0}',
       raid_archi: 'Архип. #{0}',
       raid_res: 'Остров #{0}',
@@ -718,7 +764,10 @@
       center_tip: 'Центр',
       world_map_btn: '🗺 Карта мира',
       home_btn: '🏠 Мой остров',
+      back_to_base: 'Вернуться на базу',
       world_locked: 'Открывается на уровне острова {0}',
+      debris_collect_btn: 'Собрать',
+      debris_collected: 'Собрано {0} золота!',
     }
   };
 
@@ -795,6 +844,9 @@
   const btnUpCannons = document.getElementById('btn-up-cannons');
   const btnUpIsland = document.getElementById('btn-up-island');
   const btnSendRaid = document.getElementById('btn-send-raid');
+  const debrisRow = document.getElementById('debris-row');
+  const debrisGoldVal = document.getElementById('debris-gold-val');
+  const btnCollectDebris = document.getElementById('btn-collect-debris');
 
   const raidList = document.getElementById('raid-list');
   const playerList = document.getElementById('player-list');
@@ -805,6 +857,7 @@
   const btnOfflineOk = document.getElementById('btn-offline-ok');
   const btnCenter = document.getElementById('btn-center');
   const btnWorldView = document.getElementById('btn-world-view');
+  const btnBackToBase = document.getElementById('btn-back-to-base');
   const viewFade = document.getElementById('view-fade');
   const minimapCanvas = document.getElementById('minimap');
   const mmCtx = minimapCanvas.getContext('2d');
@@ -834,6 +887,10 @@
   // ── Assets ────────────────────────────────────
   const imgIsland = new Image();
   imgIsland.src = 'assets/sprites/islands/island1.png';
+
+  const imgShip = new Image();
+  imgShip.src = 'assets/sprites/ships/ship-pirate-small.png';
+  const SHIP_DISPLAY_SIZE = 64; // пикселей по большей стороне (×2 от базового)
 
   // ── Архипелаг — детерминированная генерация по нику ───
   // Зеркало серверных функций archSeed / getArchipelagoCount
@@ -914,10 +971,56 @@
 
   function showToast(text, type = '') {
     const el = document.createElement('div');
-    el.className = 'toast' + (type ? ' ' + type : '');
+    el.className = 'toast' + (type ? ' ' + type : ' info');
     el.textContent = text;
     toastArea.appendChild(el);
-    setTimeout(() => el.remove(), 4000);
+    setTimeout(() => el.remove(), 5700);
+  }
+
+  // ── Web Audio (coin on loot, boat send; фоновый звук моря отключён) ─────
+  let audioCtx = null;
+
+  function initAudio() {
+    if (audioCtx) return;
+    try {
+      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    } catch (e) {
+      console.warn('[AUDIO] Init failed:', e.message);
+    }
+  }
+
+  function playCoin() {
+    if (!audioCtx) return;
+    try {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.12, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+      g.connect(audioCtx.destination);
+      const o = audioCtx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = 880;
+      o.connect(g);
+      o.start(audioCtx.currentTime);
+      o.stop(audioCtx.currentTime + 0.1);
+    } catch (e) { /* ignore */ }
+  }
+
+  function playBoatSend() {
+    if (!audioCtx) return;
+    try {
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+      g.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.15);
+      g.connect(audioCtx.destination);
+      const o = audioCtx.createOscillator();
+      o.type = 'sine';
+      o.frequency.value = 330;
+      o.connect(g);
+      o.start(audioCtx.currentTime);
+      o.stop(audioCtx.currentTime + 0.15);
+    } catch (e) { /* ignore */ }
   }
 
   function addChat(from, text) {
@@ -951,6 +1054,7 @@
   inputPassword.addEventListener('keydown', (e) => { if (e.key === 'Enter') tryJoin(); });
 
   function tryJoin() {
+    initAudio();
     const nick = inputNick.value.trim();
     const password = inputPassword.value || '';
     loginError.textContent = '';
@@ -1023,12 +1127,11 @@
       viewMode = 'base';
       targetZoom = ZOOM_BASE;
       centerOnSelf();
-      // Обновить кнопку и курсор
-      btnWorldView.textContent = '🗺 World Map';
+      btnWorldView.textContent = t('world_map_btn');
       btnWorldView.classList.remove('world-active');
       btnCenter.style.display = 'none';
+      btnBackToBase.classList.remove('visible');
       canvas.classList.remove('world-mode');
-      // Скрыть миникарту в base режиме
       document.getElementById('minimap-wrap').style.display = 'none';
     });
   }
@@ -1037,14 +1140,20 @@
     doViewSwitch(() => {
       viewMode = 'world';
       targetZoom = ZOOM_WORLD;
-      centerOnSelf(); // начинаем у своего острова
-      btnWorldView.textContent = '🏠 My Island';
+      centerOnSelf();
+      btnWorldView.textContent = t('home_btn');
       btnWorldView.classList.add('world-active');
       btnCenter.style.display = '';
+      btnBackToBase.textContent = t('back_to_base');
+      btnBackToBase.classList.add('visible');
       canvas.classList.add('world-mode');
       document.getElementById('minimap-wrap').style.display = '';
     });
   }
+
+  btnBackToBase.addEventListener('click', () => {
+    if (viewMode === 'world') switchToBase();
+  });
 
   // Кнопка переключения вида
   btnWorldView.addEventListener('click', () => {
@@ -1086,6 +1195,7 @@
       showToast(t('archi_lost', data.idx + 1), 'bad');
     }
     const minDep = Math.ceil((data.depletedUntil - Date.now()) / 60000);
+    playCoin();
     showToast(t('archi_done', data.amount, resName, data.idx + 1, minDep), 'good');
     // Обновляем локальное состояние немедленно (не ждём следующего state-broadcast)
     myArchiRaids    = myArchiRaids.filter(r => r.idx !== data.idx);
@@ -1096,6 +1206,7 @@
     const resName = { wood: '🌲 wood', gold: '💰 gold', rum: '🍺 rum' }[data.resource] || data.resource;
     if (data.boatLost) showToast(t('res_island_lost'), 'bad');
     const minDep = Math.ceil((data.depletedUntil - Date.now()) / 60000);
+    playCoin();
     showToast(t('res_island_done', data.amount, resName, minDep), 'good');
     myResourceRaids = myResourceRaids.filter(r => r.islandId !== data.islandId);
     // Mark island depleted locally
@@ -1110,6 +1221,7 @@
   socket.on('attackResult', (data) => {
     if (data.ok) {
       const s = data.stolen;
+      playCoin();
       showToast(t('attack_hit', data.target, s.rum, s.gold, s.wood), 'good');
     } else {
       showToast(data.msg || t('attack_shielded'), 'bad');
@@ -1124,6 +1236,7 @@
   socket.on('raidResult', (data) => {
     if (data.success) {
       const l = data.loot;
+      playCoin();
       showToast(t('boat_returned', l.rum, l.wood, l.gold), 'good');
     } else if (data.boatLost) {
       showToast(t('boat_lost'), 'bad');
@@ -1196,6 +1309,15 @@
                            m.wood < Math.floor(500 * Math.pow(2, m.island_level - 1));
     btnSendRaid.disabled = m.boats <= 0;
 
+    if (m.debris_gold > 0) {
+      debrisRow.style.display = 'flex';
+      debrisGoldVal.textContent = formatNum(m.debris_gold);
+      btnCollectDebris.disabled = false;
+    } else {
+      debrisRow.style.display = 'none';
+      btnCollectDebris.disabled = true;
+    }
+
     // World Map button: доступно только начиная с WORLD_UNLOCK_LVL
     if (viewMode === 'base') {
       const canUnlock = m.island_level >= WORLD_UNLOCK_LVL;
@@ -1213,7 +1335,7 @@
     }
   }
 
-  // ── Raid panel ────────────────────────────────
+  // ── Raid panel (grouped: PvE / Archipelago / Resource; sorted by ETA) ──
   function updateRaidPanel() {
     const now = Date.now();
     const items = [];
@@ -1221,26 +1343,29 @@
     myRaids.forEach((r, i) => {
       const remaining = Math.max(0, r.remaining ?? (r.startTime + r.duration - now));
       items.push({
+        type: 'pve',
         label: t('raid_n', i + 1),
         remaining,
         duration: r.duration,
         progress: r.duration ? Math.min(1, 1 - remaining / r.duration) : 0
       });
     });
-    (myArchiRaids || []).forEach((r, i) => {
+    (myArchiRaids || []).forEach((r) => {
       const remaining = Math.max(0, r.startTime + r.duration - now);
       items.push({
+        type: 'archi',
         label: t('raid_archi', r.idx + 1) + (r.type ? ` (${r.type})` : ''),
         remaining,
         duration: r.duration,
         progress: r.duration ? Math.min(1, (now - r.startTime) / r.duration) : 0
       });
     });
-    (myResourceRaids || []).forEach((r, i) => {
+    (myResourceRaids || []).forEach((r) => {
       const remaining = Math.max(0, r.startTime + r.duration - now);
       const isl = worldResourceIslands.find(w => w.id === r.islandId);
       const typeStr = isl ? ` (${isl.type})` : '';
       items.push({
+        type: 'resource',
         label: t('raid_res', r.islandId) + typeStr,
         remaining,
         duration: r.duration,
@@ -1252,16 +1377,29 @@
       raidList.innerHTML = `<div class="raid-empty">${t('no_raids')}</div>`;
       return;
     }
-    raidList.innerHTML = items.map(it => {
-      const remainMin = Math.floor(it.remaining / 60000);
-      const remainSec = Math.floor((it.remaining % 60000) / 1000);
-      const timeStr = `${remainMin}:${String(remainSec).padStart(2, '0')}`;
-      return `<div class="raid-item">
-        <div>${it.label}</div>
-        <div class="raid-bar"><div class="raid-bar-fill" style="width:${(it.progress * 100).toFixed(1)}%"></div></div>
-        <div class="raid-time">${t('remaining', timeStr)}</div>
-      </div>`;
-    }).join('');
+    items.sort((a, b) => a.remaining - b.remaining);
+    const groups = [
+      { key: 'pve', title: t('raids_group_pve') },
+      { key: 'archi', title: t('raids_group_archi') },
+      { key: 'resource', title: t('raids_group_resource') }
+    ];
+    let html = '';
+    for (const g of groups) {
+      const list = items.filter(it => it.type === g.key);
+      if (list.length === 0) continue;
+      html += `<div class="raid-group-title">${g.title}</div>`;
+      html += list.map(it => {
+        const remainMin = Math.floor(it.remaining / 60000);
+        const remainSec = Math.floor((it.remaining % 60000) / 1000);
+        const timeStr = `${remainMin}:${String(remainSec).padStart(2, '0')}`;
+        return `<div class="raid-item">
+          <div>${it.label}</div>
+          <div class="raid-bar"><div class="raid-bar-fill" style="width:${(it.progress * 100).toFixed(1)}%"></div></div>
+          <div class="raid-time">${t('remaining', timeStr)}</div>
+        </div>`;
+      }).join('');
+    }
+    raidList.innerHTML = html;
   }
 
   setInterval(() => {
@@ -1368,6 +1506,7 @@
       if (dist <= z.size) {
         socket.emit('harvestArchi', { idx: z.idx }, (resp) => {
           if (resp.ok) {
+            playBoatSend();
             showToast(t('archi_sending', Math.round(resp.duration / 1000)), 'good');
             myArchiRaids.push({ idx: resp.idx, startTime: Date.now(), duration: resp.duration, type: resp.type });
           } else {
@@ -1391,6 +1530,7 @@
       if (dist <= z.size) {
         socket.emit('harvestResourceIsland', { islandId: z.id }, (resp) => {
           if (resp.ok) {
+            playBoatSend();
             showToast(t('res_island_sending', Math.round(resp.duration / 1000)), 'good');
             myResourceRaids.push({ islandId: resp.islandId, startTime: Date.now(), duration: resp.duration });
           } else {
@@ -1470,11 +1610,35 @@
     });
   });
 
+  btnCollectDebris.addEventListener('click', () => {
+    socket.emit('collectDebris', (resp) => {
+      if (resp.ok) {
+        playCoin();
+        showToast(t('debris_collected', formatNum(resp.collected)), 'good');
+        const m = me();
+        if (m) {
+          m.debris_gold = 0;
+          m.gold = (m.gold || 0) + resp.collected;
+        }
+        updateHUD();
+      } else {
+        showToast(resp.msg || 'No debris', 'bad');
+      }
+    });
+  });
+
   btnSendRaid.addEventListener('click', () => {
     socket.emit('sendRaid', (resp) => {
       if (resp.ok) {
         const min = Math.floor(resp.duration / 60000);
+        playBoatSend();
         showToast(t('boat_sent', min), 'good');
+        myRaids.push({
+          startTime: Date.now(),
+          duration: resp.duration,
+          remaining: resp.duration
+        });
+        updateRaidPanel();
       } else {
         showToast(resp.msg, 'bad');
       }
@@ -1512,6 +1676,9 @@
       ctx.scale(zoom, zoom);
       ctx.translate(-pivotX, -pivotY);
     }
+
+    drawSeaGradientInWorld(W, H, zoom);
+    drawRipplesInWorld(W, H, zoom);
 
     // Отрисовка островов
     for (const p of playersArr) {
@@ -1564,142 +1731,91 @@
     requestAnimationFrame(draw);
   }
 
-  // ── Water: single noise mesh + foam on crests only ──
+  // ── Water: переливающийся градиент + параллакс рябь (assets/sea/ripples.png) ──
+  const ripplesImg = new Image();
+  ripplesImg.src = 'assets/sea/ripples.png';
+
   function drawWater(W, H) {
-    const time = animFrame * 0.014;
-    const cell = 18; // grid step
-    const scale = 0.006; // noise scale
-
-    function height(x, y, t) {
-      // Добавляем смещение камеры для прокрутки воды с миром
-      const wx = x + camera.x;
-      const wy = y + camera.y;
-      let h = 0;
-      let amp = 1;
-      let f = 1;
-      for (let o = 0; o < 4; o++) {
-        const nx = wx * scale * f + t * (0.3 + o * 0.12) + o * 5;
-        const ny = wy * scale * f + t * (0.2 + o * 0.1) + o * 3;
-        h += simplex2D(nx, ny) * amp;
-        amp *= 0.55;
-        f *= 2;
-      }
-      return h * 0.008;
-    }
-
-    // 1) Deep ocean gradient
-    const bg = ctx.createRadialGradient(W * 0.5, H * 0.5, 0, W * 0.5, H * 0.5, W * 0.65);
-    bg.addColorStop(0, '#1565c0');
-    bg.addColorStop(0.4, '#0d47a1');
-    bg.addColorStop(0.75, '#0a3070');
-    bg.addColorStop(1, '#061a40');
-    ctx.fillStyle = bg;
+    ctx.fillStyle = '#0a1929';
     ctx.fillRect(0, 0, W, H);
+  }
 
-    // 2) Shaded wave mesh — one continuous surface, no stripes
-    const cols = Math.ceil(W / cell) + 2;
-    const rows = Math.ceil(H / cell) + 2;
-    const grid = [];
-    for (let gy = 0; gy < rows; gy++) {
-      const row = [];
-      for (let gx = 0; gx < cols; gx++) {
-        const px = (gx - 1) * cell;
-        const py = (gy - 1) * cell;
-        row.push(height(px, py, time));
-      }
-      grid.push(row);
-    }
+  // Градиент моря в мировых координатах: ось и стопы привязаны к миру (world Y), как рябь к островам
+  function drawSeaGradientInWorld(W, H, zoom) {
+    const time = animFrame * 0.02;
+    const margin = 400;
+    const halfVW = W / (2 * zoom);
+    const halfVH = H / (2 * zoom);
+    const x0 = W / 2 - halfVW - margin;
+    const y0 = H / 2 - halfVH - margin;
+    const gw = halfVW * 2 + margin * 2;
+    const gh = halfVH * 2 + margin * 2;
+    const cx = x0 + gw / 2;
+    const shimmer = Math.sin(time * 0.5) * 0.015;
 
-    const lightX = 0.3;
-    const lightY = -0.5;
-    for (let gy = 0; gy < rows - 1; gy++) {
-      for (let gx = 0; gx < cols - 1; gx++) {
-        const h00 = grid[gy][gx];
-        const h10 = grid[gy][gx + 1];
-        const h01 = grid[gy + 1][gx];
-        const h11 = grid[gy + 1][gx + 1];
-        const nx = (h00 - h10 + h01 - h11) * 0.5;
-        const ny = (h00 - h01 + h10 - h11) * 0.5;
-        const len = Math.sqrt(nx * nx + ny * ny + 0.02);
-        const lx = nx / len;
-        const ly = ny / len;
-        const dot = Math.max(0, lx * lightX + ly * lightY + 0.4);
-        const shade = 0.5 + dot * 0.5;
-        const px = (gx - 1) * cell;
-        const py = (gy - 1) * cell;
-        ctx.fillStyle = `hsl(210, 65%, ${28 + shade * 18}%)`;
-        ctx.globalAlpha = 0.82;
-        ctx.fillRect(px, py, cell + 1, cell + 1);
+    const gy0 = -camera.y - margin;
+    const gy1 = MAP_H - camera.y + margin;
+    const bg = ctx.createLinearGradient(cx, gy0, cx, gy1);
+    bg.addColorStop(0, `hsl(198, 52%, ${46 + shimmer}%)`);
+    bg.addColorStop(0.08, `hsl(200, 58%, ${40 + shimmer}%)`);
+    bg.addColorStop(0.2, '#1976d2');
+    bg.addColorStop(0.32, `hsl(205, 62%, ${36 - shimmer}%)`);
+    bg.addColorStop(0.45, '#1565c0');
+    bg.addColorStop(0.55, 'hsl(208, 65%, 32%)');
+    bg.addColorStop(0.68, '#0d47a1');
+    bg.addColorStop(0.8, 'hsl(210, 70%, 22%)');
+    bg.addColorStop(1, '#051d35');
+    ctx.fillStyle = bg;
+    ctx.fillRect(x0, y0, gw, gh);
+
+    const bandY0 = -camera.y - margin;
+    const bandY1 = MAP_H * 0.4 - camera.y + margin;
+    const band = ctx.createLinearGradient(-camera.x, bandY0, MAP_W - camera.x, bandY1);
+    band.addColorStop(0, 'rgba(30, 136, 229, 0.08)');
+    band.addColorStop(0.5, 'rgba(25, 118, 210, 0.12)');
+    band.addColorStop(1, 'rgba(30, 136, 229, 0.06)');
+    ctx.fillStyle = band;
+    ctx.fillRect(x0, y0, gw, gh);
+
+    const sideY = MAP_H / 2 - camera.y;
+    const side = ctx.createLinearGradient(-camera.x - margin, sideY, MAP_W - camera.x + margin, sideY);
+    side.addColorStop(0, 'rgba(13, 71, 161, 0.15)');
+    side.addColorStop(0.5, 'transparent');
+    side.addColorStop(1, 'rgba(21, 101, 192, 0.12)');
+    ctx.fillStyle = side;
+    ctx.fillRect(x0, y0, gw, gh);
+  }
+
+  // Рябь в мировых координатах (привязана к суше: двигается и масштабируется вместе с картой)
+  function drawRipplesInWorld(W, H, zoom) {
+    if (!ripplesImg.complete || ripplesImg.naturalWidth <= 0) return;
+    const time = animFrame * 0.02;
+    const rw = ripplesImg.naturalWidth;
+    const rh = ripplesImg.naturalHeight;
+    const RIPPLES_TILE_WORLD = 150;
+    const tileW = RIPPLES_TILE_WORLD;
+    const tileH = RIPPLES_TILE_WORLD * (rh / rw);
+    const driftX = Math.sin(time * 0.15) * 4;
+    const driftY = Math.cos(time * 0.12) * 4;
+    const margin = 300;
+    const halfVW = W / (2 * zoom);
+    const halfVH = H / (2 * zoom);
+    const i0 = Math.floor((camera.x + W / 2 - halfVW - margin - driftX) / tileW);
+    const i1 = Math.ceil((camera.x + W / 2 + halfVW + margin - driftX) / tileW);
+    const j0 = Math.floor((camera.y + H / 2 - halfVH - margin - driftY) / tileH);
+    const j1 = Math.ceil((camera.y + H / 2 + halfVH + margin - driftY) / tileH);
+    ctx.globalAlpha = 0.65;
+    for (let j = j0; j <= j1; j++) {
+      for (let i = i0; i <= i1; i++) {
+        const px = i * tileW - camera.x + driftX;
+        const py = j * tileH - camera.y + driftY;
+        ctx.drawImage(ripplesImg, 0, 0, rw, rh, px, py, tileW, tileH);
       }
     }
     ctx.globalAlpha = 1;
-
-    // 3) Foam lines — only along wave crests (no dots)
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-    const foamStep = 5;
-    const contourThreshold = 0.1;
-    // Scan by rows: where noise is high and locally max, trace a foam line
-    for (let row = 0; row < H; row += Math.max(1, cell - 2)) {
-      const path = [];
-      for (let px = -foamStep; px <= W + foamStep; px += foamStep) {
-        const h = height(px, row, time);
-        const hl = height(px - foamStep, row, time);
-        const hr = height(px + foamStep, row, time);
-        const isCrest = h >= contourThreshold && h >= hl && h >= hr;
-        if (isCrest) {
-          path.push({ x: px, y: row + h * 25 });
-        } else if (path.length >= 2) {
-          ctx.strokeStyle = `rgba(255,255,255,${0.22 + Math.sin(time * 0.4 + row * 0.008) * 0.12})`;
-          ctx.lineWidth = 2.2;
-          ctx.beginPath();
-          ctx.moveTo(path[0].x, path[0].y);
-          for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
-          ctx.stroke();
-          path.length = 0;
-        }
-      }
-      if (path.length >= 2) {
-        ctx.strokeStyle = `rgba(255,255,255,${0.22 + Math.sin(time * 0.4 + row * 0.008) * 0.12})`;
-        ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        ctx.moveTo(path[0].x, path[0].y);
-        for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
-        ctx.stroke();
-      }
-    }
-    // Same along columns for crossing foam (net of crests)
-    for (let col = 0; col < W; col += Math.max(1, cell - 2)) {
-      const path = [];
-      for (let py = -foamStep; py <= H + foamStep; py += foamStep) {
-        const h = height(col, py, time);
-        const ht = height(col, py - foamStep, time);
-        const hb = height(col, py + foamStep, time);
-        const isCrest = h >= contourThreshold && h >= ht && h >= hb;
-        if (isCrest) {
-          path.push({ x: col + h * 25, y: py });
-        } else if (path.length >= 2) {
-          ctx.strokeStyle = `rgba(255,255,255,${0.15 + Math.sin(time * 0.35 + col * 0.008) * 0.08})`;
-          ctx.lineWidth = 1.6;
-          ctx.beginPath();
-          ctx.moveTo(path[0].x, path[0].y);
-          for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
-          ctx.stroke();
-          path.length = 0;
-        }
-      }
-      if (path.length >= 2) {
-        ctx.strokeStyle = `rgba(255,255,255,${0.15 + Math.sin(time * 0.35 + col * 0.008) * 0.08})`;
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(path[0].x, path[0].y);
-        for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
-        ctx.stroke();
-      }
-    }
   }
 
-  // ── Общая функция рисования лодки ─────────────
+  // ── Общая функция рисования лодки (примитив, fallback) ─────────────
   function drawBoat(bx, by, bob, color, sailColor) {
     ctx.fillStyle = color || '#8b4513';
     ctx.beginPath();
@@ -1714,6 +1830,31 @@
     ctx.lineTo(bx + 7, by + bob);
     ctx.lineTo(bx - 1, by + bob);
     ctx.fill();
+  }
+
+  // ── Спрайт корабля (нос влево-вниз; при движении вправо — отзеркалить) ─────────────
+  function drawShipSprite(bx, by, opts = {}) {
+    const bob = opts.bob ?? 0;
+    const flipRight = opts.flipRight === true;
+    if (!imgShip.complete || imgShip.naturalWidth <= 0) {
+      drawBoat(bx, by, bob, opts.color, opts.sailColor);
+      return;
+    }
+    const iw = imgShip.naturalWidth;
+    const ih = imgShip.naturalHeight;
+    const maxS = SHIP_DISPLAY_SIZE;
+    const scale = maxS / Math.max(iw, ih);
+    const sw = Math.round(iw * scale);
+    const sh = Math.round(ih * scale);
+    ctx.save();
+    ctx.translate(bx, by + bob);
+    if (flipRight) {
+      ctx.scale(-1, 1);
+      ctx.drawImage(imgShip, 0, 0, iw, ih, -sw / 2, -sh / 2, sw, sh);
+    } else {
+      ctx.drawImage(imgShip, 0, 0, iw, ih, -sw / 2, -sh / 2, sw, sh);
+    }
+    ctx.restore();
   }
 
   // ── Island (общий для своего и чужих) ─────────
@@ -1851,100 +1992,32 @@
   }
 
   function drawBuildingsAt(p, cx, cy) {
-    const baseSize = 70 + p.island_level * 12;
-    const imgSize = baseSize * 2.4;
-
-    // Tavern
-    const tavX = cx - baseSize * 0.4;
-    const tavY = cy - baseSize * 0.2;
-    ctx.fillStyle = '#8b4513';
-    ctx.fillRect(tavX - 12, tavY - 12, 24, 20);
-    ctx.fillStyle = '#654321';
-    ctx.beginPath();
-    ctx.moveTo(tavX - 15, tavY - 12);
-    ctx.lineTo(tavX, tavY - 22);
-    ctx.lineTo(tavX + 15, tavY - 12);
-    ctx.fill();
-
-    // Dock
-    const dockX = cx + baseSize * 0.3;
-    const dockY = cy + baseSize * 0.45;
-    ctx.fillStyle = '#654321';
-    ctx.fillRect(dockX - 15, dockY - 4, 30, 8);
-    ctx.fillRect(dockX + 12, dockY - 12, 4, 16);
-
-    // Cannons
-    if (p.cannon_level > 0) {
-      const canX = cx + baseSize * 0.55;
-      const canY = cy - baseSize * 0.1;
-      for (let i = 0; i < Math.min(p.cannon_level, 5); i++) {
-        ctx.fillStyle = '#555';
-        ctx.beginPath();
-        ctx.arc(canX, canY + i * 14 - 14, 5, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillStyle = '#333';
-        ctx.fillRect(canX + 3, canY + i * 14 - 16, 10, 4);
-      }
-    }
-
-    // Floating badge chips с уровнями поверх фигур
-    const badges = [
-      { label: `🍺 ${p.tavern_level}`, x: tavX,           y: tavY + 26 },
-      { label: `⚓ ${p.dock_level}`,   x: dockX,           y: dockY + 18 },
-    ];
-    if (p.cannon_level > 0) {
-      const canX = cx + baseSize * 0.55;
-      const canY = cy - baseSize * 0.1;
-      badges.push({ label: `💣 ${p.cannon_level}`, x: canX + 10, y: canY + Math.min(p.cannon_level, 5) * 14 + 6 });
-    }
-
-    ctx.save();
-    ctx.font = 'bold 10px Georgia, serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    for (const b of badges) {
-      const tw = ctx.measureText(b.label).width;
-      const bw = tw + 8, bh = 14;
-      ctx.fillStyle = 'rgba(10,18,30,0.82)';
-      ctx.strokeStyle = '#834848';
-      ctx.lineWidth = 0.7;
-      ctx.beginPath();
-      ctx.roundRect(b.x - bw / 2, b.y - bh / 2, bw, bh, 3);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = '#ffd543';
-      ctx.fillText(b.label, b.x, b.y);
-    }
-    ctx.restore();
+    // Плейсхолдеры построек убраны — уровни показываются над статистикой в drawInfoTextAt
   }
 
   function drawBoatsAtDockAt(p, cx, cy) {
     const baseSize = 70 + p.island_level * 12;
-    const dockX = cx + baseSize * 0.3;
-    const dockY = cy + baseSize * 0.45;
-    for (let i = 0; i < Math.min(p.boats, 6); i++) {
-      const bx = dockX - 20 - i * 12;
-      const by = dockY + 10 + Math.sin(animFrame * 0.05 + i) * 2;
-      drawBoat(bx, by, 0, '#8b4513', '#f5f5dc');
+    const dockX = cx - baseSize * 1.0;
+    const dockY = cy + baseSize * 1.0;
+    const step = 22;
+    for (let i = 0; i < Math.min(p.boats, 8); i++) {
+      const bx = dockX - i * step * 0.707;
+      const by = dockY - i * step * 0.707 + Math.sin(animFrame * 0.05 + i) * 2;
+      drawShipSprite(bx, by, { bob: 0, flipRight: false });
     }
   }
 
-  // Лодки других игроков у дока (упрощённые)
+  // Лодки других игроков у дока (левый нижний угол, наискось)
   function drawOtherBoatsAt(p, cx, cy) {
     if (p.boats <= 0) return;
     const baseSize = 70 + p.island_level * 12;
-    const dockX = cx + baseSize * 0.3;
-    const dockY = cy + baseSize * 0.45;
-    for (let i = 0; i < Math.min(p.boats, 4); i++) {
-      const bx = dockX - 14 - i * 10;
-      const by = dockY + 8 + Math.sin(animFrame * 0.04 + i + p.nick.length) * 2;
-      ctx.fillStyle = p.color || '#8b4513';
-      ctx.globalAlpha = 0.8;
-      ctx.beginPath();
-      ctx.moveTo(bx - 5, by); ctx.lineTo(bx + 5, by);
-      ctx.lineTo(bx + 3, by + 4); ctx.lineTo(bx - 3, by + 4);
-      ctx.fill();
-      ctx.globalAlpha = 1;
+    const dockX = cx - baseSize * 1.0;
+    const dockY = cy + baseSize * 1.0;
+    const step = 22;
+    for (let i = 0; i < Math.min(p.boats, 6); i++) {
+      const bx = dockX - i * step * 0.707;
+      const by = dockY - i * step * 0.707 + Math.sin(animFrame * 0.04 + i + p.nick.length) * 2;
+      drawShipSprite(bx, by, { bob: 0, flipRight: false });
     }
     // Количество рейдов
     if (p.active_raids > 0) {
@@ -1988,12 +2061,15 @@
       }
     }
     if (p.destruction_state >= 2) {
+      const seed = (x, y, i, f) => ((Math.sin(x * 7 + y * 13 + i * 31 + f * 0.02) * 10000) % 1000 + 1000) / 1000;
       for (let i = 0; i < 6; i++) {
-        const sx = cx + (Math.random() - 0.5) * baseSize;
-        const sy = cy - baseSize * 0.3 - Math.random() * 30 - (animFrame * 0.3 + i * 10) % 40;
+        const f = animFrame + i * 10;
+        const sx = cx + (seed(cx, cy, i, f) * 2 - 1) * baseSize * 0.5;
+        const sy = cy - baseSize * 0.3 - seed(cy, cx, i + 1, f) * 30 - (f * 0.3) % 40;
+        const r = 4 + seed(cx, cy, i + 2, f) * 4;
         ctx.fillStyle = 'rgba(80,80,80,0.3)';
         ctx.beginPath();
-        ctx.arc(sx, sy, 4 + Math.random() * 4, 0, Math.PI * 2);
+        ctx.arc(sx, sy, r, 0, Math.PI * 2);
         ctx.fill();
       }
     }
@@ -2009,6 +2085,7 @@
       const bx = cx + Math.cos(angle) * dist;
       const by = cy + Math.sin(angle) * dist * 0.5;
       const bob = Math.sin(animFrame * 0.06 + i) * 2;
+      const flipRight = (bx - cx) >= 0;
 
       // Wake trail
       ctx.strokeStyle = 'rgba(255,255,255,0.1)';
@@ -2024,7 +2101,7 @@
       }
       ctx.stroke();
 
-      drawBoat(bx, by, bob);
+      drawShipSprite(bx, by, { bob, flipRight });
 
       const remainMin = Math.floor(r.remaining / 60000);
       const remainSec = Math.floor((r.remaining % 60000) / 1000);
@@ -2039,15 +2116,22 @@
   function drawInfoTextAt(p, cx, cy) {
     const baseSize = 70 + p.island_level * 12;
     const bottomY = cy + baseSize * 1.2 + 8;
+
+    // Иконки построек с уровнями — над статистикой сбора обломков
+    ctx.save();
+    ctx.font = 'bold 11px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillStyle = 'rgba(255,233,157,0.9)';
+    const buildingLine = `🍺 ${t('lvl_short')}.${p.tavern_level}   ⚓ ${t('lvl_short')}.${p.dock_level}   💣 ${t('lvl_short')}.${p.cannon_level}`;
+    ctx.fillText(buildingLine, cx, bottomY);
+
     if (p.debris_gold > 0) {
       ctx.fillStyle = '#ffd700';
       ctx.font = '12px Georgia';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'alphabetic';
       ctx.fillText(t('debris_label', formatNum(p.debris_gold)), cx, bottomY + 14);
     }
     ctx.font = '11px Georgia';
-    ctx.textAlign = 'center';
     const rate = BASE_RUM + (p.tavern_level - 1) * RUM_PER_TAV;
     const legacyMult = 1 + p.legacy_bonus;
     ctx.fillStyle = 'rgba(255,213,67,0.65)';
@@ -2055,6 +2139,7 @@
     const woodRate = (ARCHI_WOOD_PER_SEC * getArchipelagoCount(p.nick)).toFixed(1);
     ctx.fillStyle = 'rgba(168,192,96,0.65)';
     ctx.fillText(t('wood_sec_label', woodRate), cx, bottomY + 42);
+    ctx.restore();
   }
 
   // ── Предупреждение о входящей атаке (base mode) ──
@@ -2178,20 +2263,33 @@
     const myY = m.pos_y;
     const boatColor = m.color || '#8b4513';
 
+    const myIslandRadius = 105;
+    const imgSize = 70 + (m.island_level || 1) * 12;
+    const myRadius = Math.max(myIslandRadius, imgSize * 1.05);
+
     for (const raid of myResourceRaids) {
       const isl = worldResourceIslands.find(w => w.id === raid.islandId);
       if (!isl) continue;
 
+      const dx = isl.x - myX;
+      const dy = isl.y - myY;
+      const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+      const startX = myX + (dx / dist) * myRadius;
+      const startY = myY + (dy / dist) * myRadius;
+      const endRadius = (isl.size || 20) + 18;
+      const endX = isl.x - (dx / dist) * endRadius;
+      const endY = isl.y - (dy / dist) * endRadius;
+
       const progress = Math.min(1, (now - raid.startTime) / raid.duration);
-      const boatX = myX + progress * (isl.x - myX);
-      const boatY = myY + progress * (isl.y - myY);
+      const boatX = startX + progress * (endX - startX);
+      const boatY = startY + progress * (endY - startY);
 
       const sx = boatX - camera.x;
       const sy = boatY - camera.y;
       const stx = isl.x - camera.x;
       const sty = isl.y - camera.y;
-      const mySx = myX - camera.x;
-      const mySy = myY - camera.y;
+      const startSx = startX - camera.x;
+      const startSy = startY - camera.y;
 
       const margin = 80;
       const halfVW = canvas.width / (2 * viewZoom);
@@ -2203,12 +2301,12 @@
 
       const angle = Math.atan2(isl.x - boatX, -(isl.y - boatY));
 
-      // Пунктирная линия маршрута (от моего острова до цели)
+      // Пунктирная линия маршрута (от границы острова до границы цели)
       ctx.setLineDash([6, 8]);
       ctx.strokeStyle = 'rgba(168, 192, 96, 0.35)';
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.moveTo(mySx, mySy);
+      ctx.moveTo(startSx, startSy);
       ctx.lineTo(stx, sty);
       ctx.stroke();
       ctx.setLineDash([]);
@@ -2229,17 +2327,14 @@
       ctx.lineTo(tailX, tailY);
       ctx.stroke();
 
-      // Лодка (повёрнута по направлению к острову)
+      // Зеркало по направлению движения: плывём вправо (dx > 0) → отражённый спрайт; 90° = стандарт
       const bob = Math.sin(animFrame * 0.08 + raid.islandId) * 1.5;
-      ctx.save();
-      ctx.translate(sx, sy);
-      ctx.rotate(angle);
-      drawBoat(0, 0, bob, boatColor, '#e8e4c9');
-      ctx.restore();
+      const flipRight = (isl.x - boatX) > 0;
+      drawShipSprite(sx, sy, { bob, flipRight, color: boatColor, sailColor: '#e8e4c9' });
     }
   }
 
-  // ── PvP миссии (летящие лодки) ────────────────
+  // ── PvP миссии (флот кораблей плывёт к цели) ────────────────
   function drawPvpMissions() {
     for (const m of pvpMissions) {
       const sx = m.x - camera.x;
@@ -2263,64 +2358,45 @@
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Огненный след — длинный, двойной
-      const trailLen = 48;
+      // Кильватерный след за флотом
+      const trailLen = 40;
       const tailX = sx - Math.cos(angle) * trailLen;
       const tailY = sy - Math.sin(angle) * trailLen;
-      // Внешний след (широкий, тёмно-красный)
-      const grad1 = ctx.createLinearGradient(sx, sy, tailX, tailY);
-      grad1.addColorStop(0, 'rgba(255,100,50,0.7)');
-      grad1.addColorStop(0.4, 'rgba(200,50,20,0.3)');
-      grad1.addColorStop(1, 'rgba(100,20,0,0)');
-      ctx.strokeStyle = grad1;
-      ctx.lineWidth = 5;
+      const grad = ctx.createLinearGradient(sx, sy, tailX, tailY);
+      grad.addColorStop(0, 'rgba(255,180,80,0.35)');
+      grad.addColorStop(0.5, 'rgba(200,80,40,0.15)');
+      grad.addColorStop(1, 'rgba(255,100,50,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 4;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(sx, sy);
       ctx.lineTo(tailX, tailY);
       ctx.stroke();
-      // Внутренний след (узкий, яркий)
-      const grad2 = ctx.createLinearGradient(sx, sy, tailX, tailY);
-      grad2.addColorStop(0, 'rgba(255,220,100,0.95)');
-      grad2.addColorStop(0.3, 'rgba(255,120,40,0.5)');
-      grad2.addColorStop(1, 'rgba(255,60,0,0)');
-      ctx.strokeStyle = grad2;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(sx, sy);
-      ctx.lineTo(tailX, tailY);
-      ctx.stroke();
-      ctx.lineCap = 'butt';
 
-      // Снаряд — острый треугольник-дротик, без покачивания
-      ctx.save();
-      ctx.translate(sx, sy);
-      ctx.rotate(angle);
-      // Корпус — вытянутый ромб
-      ctx.fillStyle = m.ownerColor || '#cc3333';
-      ctx.beginPath();
-      ctx.moveTo(14, 0);    // нос
-      ctx.lineTo(2, -4);
-      ctx.lineTo(-8, 0);   // хвост
-      ctx.lineTo(2, 4);
-      ctx.closePath();
-      ctx.fill();
-      // Блик
-      ctx.fillStyle = 'rgba(255,255,200,0.6)';
-      ctx.beginPath();
-      ctx.moveTo(12, 0);
-      ctx.lineTo(4, -2);
-      ctx.lineTo(6, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
+      // Флот: несколько кораблей в строю — ориентация как у лодок за ресурсами (flip по направлению к цели)
+      const fleetOffsets = [0, 14, -14]; // по перпендикуляру к курсу
+      const flipRight = (m.tx - m.x) > 0;
+      for (let i = 0; i < fleetOffsets.length; i++) {
+        const perpX = Math.sin(angle) * fleetOffsets[i];
+        const perpY = -Math.cos(angle) * fleetOffsets[i];
+        const shipSx = sx + perpX;
+        const shipSy = sy + perpY;
+        const bob = Math.sin(animFrame * 0.06 + i * 2) * 1.5;
+        drawShipSprite(shipSx, shipSy, {
+          bob,
+          flipRight,
+          color: m.ownerColor || '#cc5533',
+          sailColor: '#e8c4a0'
+        });
+      }
 
-      // Ник атакующего
+      // Ник атакующего над флотом
       ctx.fillStyle = '#ff8a80';
       ctx.font = 'bold 9px Georgia';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'alphabetic';
-      ctx.fillText(m.owner, sx, sy - 16);
+      ctx.fillText(m.owner, sx, sy - 20);
     }
   }
 
