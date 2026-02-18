@@ -5,10 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>PirateIsles</title>
 <style>
+  /* ══ Palette ══════════════════════════════════════
+     --cream:  #ffe99d  (255,233,157) – text, light accent
+     --gold:   #ffd543  (255,213,67)  – primary accent
+     --bronze: #d88b46  (216,139,70)  – borders, warm tones
+     --rust:   #ad5542  (173,85,66)   – danger / attack
+     --maroon: #834848  (131,72,72)   – dark borders, bg accents
+     bg-deep:  #0c1520                – page background
+     bg-panel: rgba(12,21,34,.93)     – panel / HUD fill
+  ═══════════════════════════════════════════════════ */
+
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
-    background: #0d1b2a;
-    color: #d4c5a9;
+    background: #0c1520;
+    color: #ffe99d;
     font-family: 'Georgia', 'Times New Roman', serif;
     overflow: hidden;
     user-select: none;
@@ -20,47 +30,60 @@
     position: fixed; inset: 0;
     display: flex; flex-direction: column;
     align-items: center; justify-content: center;
-    background: radial-gradient(ellipse at center, #1b2838 0%, #0d1b2a 70%);
+    background: radial-gradient(ellipse at 50% 40%, #1a2840 0%, #0c1520 75%);
     z-index: 100;
   }
   .overlay h1 {
-    font-size: 42px; margin-bottom: 4px;
-    background: linear-gradient(90deg, #ffd700, #b8860b);
+    font-size: 46px; margin-bottom: 6px;
+    background: linear-gradient(160deg, #ffe99d 20%, #ffd543 55%, #d88b46 100%);
     -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    text-shadow: none;
+    letter-spacing: 2px;
   }
-  .overlay .sub { color: #7a6f5a; margin-bottom: 20px; font-size: 13px; }
+  .overlay .sub {
+    color: #834848; margin-bottom: 28px; font-size: 13px;
+    letter-spacing: 3px; text-transform: uppercase;
+  }
   .overlay input {
-    width: 260px; padding: 10px 14px;
-    border: 2px solid #3a3020; border-radius: 6px;
-    background: #1a1510; color: #ffd700;
-    font-size: 16px; text-align: center;
-    outline: none; transition: border-color .2s;
-    margin-bottom: 8px;
+    width: 270px; padding: 11px 16px;
+    border: 1px solid #834848; border-radius: 6px;
+    background: rgba(12,21,34,.9); color: #ffe99d;
+    font-size: 15px; text-align: center;
+    outline: none; transition: border-color .2s, box-shadow .2s;
+    margin-bottom: 10px;
     font-family: inherit;
+    box-shadow: inset 0 1px 4px rgba(0,0,0,.4);
   }
-  .overlay input::placeholder { color: #5a4f3a; }
-  .overlay input:focus { border-color: #ffd700; }
+  .overlay input::placeholder { color: #834848; }
+  .overlay input:focus {
+    border-color: #ffd543;
+    box-shadow: inset 0 1px 4px rgba(0,0,0,.4), 0 0 0 2px rgba(255,213,67,.15);
+  }
   .overlay .big-btn {
-    margin-top: 8px; padding: 10px 40px;
+    margin-top: 10px; padding: 11px 48px;
     border: none; border-radius: 6px;
-    background: linear-gradient(135deg, #b8860b, #ffd700);
-    color: #1a1510; font-size: 15px; font-weight: bold;
-    cursor: pointer; transition: opacity .2s;
-    font-family: inherit;
+    background: linear-gradient(135deg, #d88b46, #ffd543);
+    color: #0c1520; font-size: 15px; font-weight: bold;
+    cursor: pointer; transition: opacity .2s, box-shadow .2s;
+    font-family: inherit; letter-spacing: 1px;
+    box-shadow: 0 3px 12px rgba(255,213,67,.3);
   }
-  .overlay .big-btn:hover { opacity: .85; }
-  .overlay .error { margin-top: 8px; color: #ff5252; font-size: 12px; min-height: 16px; }
+  .overlay .big-btn:hover {
+    opacity: .9;
+    box-shadow: 0 4px 18px rgba(255,213,67,.45);
+  }
+  .overlay .error { margin-top: 10px; color: #ad5542; font-size: 12px; min-height: 16px; }
 
   /* ═══ Lang toggle (login) ═════════════════════ */
   #login-lang-btn {
-    position: absolute; top: 12px; right: 16px;
+    position: absolute; top: 14px; right: 18px;
     padding: 4px 12px;
-    border: 1px solid #3a3020; border-radius: 4px;
-    background: rgba(26,21,16,.8); color: #ffd700;
+    border: 1px solid #834848; border-radius: 4px;
+    background: rgba(12,21,34,.8); color: #ffd543;
     cursor: pointer; font-size: 12px; font-family: inherit;
-    z-index: 101;
+    z-index: 101; transition: background .2s;
   }
-  #login-lang-btn:hover { background: #2a2010; }
+  #login-lang-btn:hover { background: rgba(131,72,72,.25); }
 
   /* ═══ Game screen ═════════════════════════════ */
   #game-screen { display: none; position: relative; }
@@ -70,121 +93,134 @@
   #hud {
     position: fixed; top: 0; left: 0; right: 0;
     display: flex; align-items: center; gap: 0;
-    padding: 0 8px;
-    background: rgba(13,27,42,.94);
-    backdrop-filter: blur(4px);
-    border-bottom: 1px solid #3a3020;
+    padding: 0 10px;
+    background: rgba(12,21,34,.96);
+    backdrop-filter: blur(6px);
+    border-bottom: 1px solid #834848;
+    box-shadow: 0 2px 12px rgba(0,0,0,.5);
     z-index: 20; font-size: 13px;
-    height: 36px;
+    height: 38px;
   }
   #hud .nick-label {
-    font-weight: bold; color: #ffd700; font-size: 14px;
-    padding: 0 12px 0 4px;
-    border-right: 1px solid #3a3020;
+    font-weight: bold; color: #ffd543; font-size: 14px;
+    padding: 0 14px 0 4px;
+    border-right: 1px solid #834848;
     margin-right: 4px;
+    text-shadow: 0 0 8px rgba(255,213,67,.35);
   }
   .hud-item {
     display: flex; align-items: center; gap: 4px;
-    padding: 4px 10px;
-    border-right: 1px solid rgba(255,255,255,.06);
+    padding: 4px 11px;
+    border-right: 1px solid rgba(131,72,72,.3);
   }
-  .hud-item .label { color: #7a6f5a; font-size: 11px; }
-  .hud-item .value { color: #ffd700; font-weight: bold; }
-  .hud-item.rum .value { color: #e06050; }
-  .hud-item.gold .value { color: #ffd700; }
-  .hud-item.wood .value { color: #8bc34a; }
-  .hud-item.boats .value { color: #64b5f6; }
+  .hud-item .label { color: #834848; font-size: 11px; }
+  .hud-item .value { color: #ffd543; font-weight: bold; }
+  .hud-item.rum .value { color: #d88b46; }
+  .hud-item.gold .value { color: #ffd543; }
+  .hud-item.wood .value { color: #a8c060; }
+  .hud-item.boats .value { color: #ffe99d; }
   .hud-shield {
     padding: 4px 10px;
-    color: #4fc3f7; font-size: 12px;
+    color: #89c4e1; font-size: 12px;
     display: none;
   }
   #hud-lang-btn {
     margin-left: auto;
     padding: 3px 10px;
-    border: 1px solid #3a3020; border-radius: 3px;
-    background: transparent; color: #ffd700;
+    border: 1px solid #834848; border-radius: 3px;
+    background: transparent; color: #ffd543;
     cursor: pointer; font-size: 11px; font-family: inherit;
+    transition: background .2s;
   }
-  #hud-lang-btn:hover { background: rgba(255,215,0,.1); }
+  #hud-lang-btn:hover { background: rgba(131,72,72,.25); }
 
   /* ═══ Side panels ═════════════════════════════ */
   .panel {
     position: fixed;
-    background: rgba(13,27,42,.92);
-    backdrop-filter: blur(4px);
-    border: 1px solid #3a3020;
+    background: rgba(12,21,34,.93);
+    backdrop-filter: blur(6px);
+    border: 1px solid #834848;
     border-radius: 8px;
     padding: 10px;
     z-index: 15;
     font-size: 12px;
     max-height: calc(100vh - 60px);
     overflow-y: auto;
+    box-shadow: 0 4px 20px rgba(0,0,0,.5), inset 0 1px 0 rgba(255,213,67,.06);
   }
   .panel h3 {
-    color: #ffd700; font-size: 13px; margin-bottom: 8px;
-    border-bottom: 1px solid #3a3020; padding-bottom: 4px;
+    color: #ffd543; font-size: 13px; margin-bottom: 8px;
+    border-bottom: 1px solid #834848; padding-bottom: 5px;
+    letter-spacing: 1px;
   }
 
   /* Left panel: upgrades */
   #panel-upgrades {
-    top: 44px; left: 8px;
-    width: 200px;
+    top: 46px; left: 8px;
+    width: 204px;
   }
   .upgrade-row {
     display: flex; align-items: center; justify-content: space-between;
-    padding: 6px 0;
-    border-bottom: 1px solid rgba(255,255,255,.04);
+    padding: 7px 0;
+    border-bottom: 1px solid rgba(131,72,72,.2);
   }
   .upgrade-row .u-info { flex: 1; }
-  .upgrade-row .u-name { color: #d4c5a9; font-size: 12px; }
-  .upgrade-row .u-lvl { color: #ffd700; font-size: 11px; }
-  .upgrade-row .u-cost { color: #7a6f5a; font-size: 10px; }
+  .upgrade-row .u-name { color: #ffe99d; font-size: 12px; }
+  .upgrade-row .u-lvl { color: #ffd543; font-size: 11px; }
+  .upgrade-row .u-cost { color: #834848; font-size: 10px; }
   .upgrade-btn {
     padding: 4px 10px;
-    border: 1px solid #3a3020; border-radius: 4px;
-    background: #1a1510; color: #ffd700;
+    border: 1px solid #834848; border-radius: 4px;
+    background: rgba(131,72,72,.18);
+    color: #ffd543;
     cursor: pointer; font-size: 11px;
     font-family: inherit;
-    transition: background .2s;
+    transition: background .2s, border-color .2s;
   }
-  .upgrade-btn:hover { background: #2a2010; }
-  .upgrade-btn:disabled { opacity: .4; cursor: default; }
+  .upgrade-btn:hover {
+    background: rgba(216,139,70,.25);
+    border-color: #d88b46;
+  }
+  .upgrade-btn:disabled { opacity: .35; cursor: default; }
 
   /* Right panel: raids */
   #panel-raids {
-    top: 44px; right: 8px;
-    width: 200px;
+    top: 46px; right: 8px;
+    width: 204px;
   }
   #btn-send-raid {
     width: 100%; padding: 8px;
-    border: 1px solid #3a3020; border-radius: 4px;
-    background: linear-gradient(135deg, #1a3a5c, #0d1b2a);
-    color: #64b5f6; cursor: pointer;
+    border: 1px solid #834848; border-radius: 5px;
+    background: linear-gradient(135deg, rgba(131,72,72,.3), rgba(12,21,34,.8));
+    color: #ffe99d; cursor: pointer;
     font-size: 12px; font-weight: bold;
     font-family: inherit;
-    transition: background .2s;
+    transition: background .2s, border-color .2s;
     margin-bottom: 8px;
   }
-  #btn-send-raid:hover { background: linear-gradient(135deg, #2a4a6c, #1a2a3a); }
-  #btn-send-raid:disabled { opacity: .4; cursor: default; }
+  #btn-send-raid:hover {
+    background: linear-gradient(135deg, rgba(173,85,66,.4), rgba(20,30,50,.8));
+    border-color: #d88b46;
+  }
+  #btn-send-raid:disabled { opacity: .35; cursor: default; }
   .raid-item {
-    padding: 6px; margin-bottom: 4px;
-    background: rgba(100,181,246,.08);
-    border: 1px solid rgba(100,181,246,.15);
-    border-radius: 4px;
+    padding: 7px; margin-bottom: 4px;
+    background: rgba(131,72,72,.1);
+    border: 1px solid rgba(131,72,72,.25);
+    border-radius: 5px;
   }
   .raid-bar {
-    height: 4px; background: #1a1510;
-    border-radius: 2px; margin: 4px 0;
+    height: 4px; background: rgba(12,21,34,.7);
+    border-radius: 2px; margin: 5px 0;
     overflow: hidden;
   }
   .raid-bar-fill {
-    height: 100%; background: #64b5f6;
+    height: 100%;
+    background: linear-gradient(90deg, #d88b46, #ffd543);
     transition: width .5s linear;
   }
-  .raid-time { color: #7a6f5a; font-size: 10px; }
-  .raid-empty { color: #5a4f3a; font-style: italic; text-align: center; padding: 12px 0; }
+  .raid-time { color: #834848; font-size: 10px; }
+  .raid-empty { color: #834848; font-style: italic; text-align: center; padding: 14px 0; }
 
   /* Bottom panel: players */
   #panel-players {
@@ -197,42 +233,52 @@
   }
   .player-row {
     display: flex; align-items: center; gap: 8px;
-    padding: 4px 8px;
-    border-bottom: 1px solid rgba(255,255,255,.04);
+    padding: 5px 8px;
+    border-bottom: 1px solid rgba(131,72,72,.18);
+    transition: background .15s;
   }
-  .pl-nick { font-weight: bold; font-size: 12px; min-width: 80px; }
-  .pl-lvl { color: #7a6f5a; font-size: 11px; min-width: 40px; }
-  .pl-shield { color: #4fc3f7; font-size: 10px; }
-  .pl-res { color: #7a6f5a; font-size: 10px; }
+  .player-row:hover { background: rgba(131,72,72,.1); }
+  .pl-nick { font-weight: bold; font-size: 12px; min-width: 80px; color: #ffe99d; }
+  .pl-lvl { color: #834848; font-size: 11px; min-width: 40px; }
+  .pl-shield { color: #89c4e1; font-size: 10px; }
+  .pl-res { color: #834848; font-size: 10px; }
   .pl-attack {
     padding: 2px 8px;
-    border: 1px solid #e06050; border-radius: 3px;
-    background: transparent; color: #e06050;
+    border: 1px solid #ad5542; border-radius: 3px;
+    background: transparent; color: #ad5542;
     cursor: pointer; font-size: 10px;
     font-family: inherit;
     margin-left: auto;
+    transition: background .15s;
   }
-  .pl-attack:hover { background: rgba(224,96,80,.15); }
+  .pl-attack:hover { background: rgba(173,85,66,.2); }
 
   /* ═══ Toast / notifications ══════════════════ */
   #toast-area {
-    position: fixed; top: 44px; left: 50%;
+    position: fixed; top: 46px; left: 50%;
     transform: translateX(-50%);
     z-index: 30;
     display: flex; flex-direction: column;
-    align-items: center; gap: 4px;
+    align-items: center; gap: 5px;
   }
   .toast {
-    padding: 8px 16px;
-    background: rgba(13,27,42,.95);
-    border: 1px solid #ffd700;
+    padding: 8px 18px;
+    background: rgba(12,21,34,.97);
+    border: 1px solid #ffd543;
     border-radius: 6px;
-    color: #ffd700;
+    color: #ffd543;
     font-size: 12px;
+    box-shadow: 0 3px 14px rgba(0,0,0,.5), 0 0 8px rgba(255,213,67,.15);
     animation: toastIn .3s ease, toastOut .3s ease 3.7s forwards;
   }
-  .toast.bad { border-color: #e06050; color: #e06050; }
-  .toast.good { border-color: #8bc34a; color: #8bc34a; }
+  .toast.bad {
+    border-color: #ad5542; color: #ad5542;
+    box-shadow: 0 3px 14px rgba(0,0,0,.5), 0 0 8px rgba(173,85,66,.2);
+  }
+  .toast.good {
+    border-color: #a8c060; color: #a8c060;
+    box-shadow: 0 3px 14px rgba(0,0,0,.5), 0 0 8px rgba(168,192,96,.15);
+  }
   @keyframes toastIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes toastOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-10px); } }
 
@@ -245,44 +291,111 @@
     font-size: 11px;
     pointer-events: none;
   }
-  .chat-line { padding: 1px 0; opacity: .8; }
-  .chat-from { color: #ffd700; font-weight: bold; }
-  .chat-text { color: #d4c5a9; }
+  .chat-line { padding: 1px 0; opacity: .85; }
+  .chat-from { color: #ffd543; font-weight: bold; }
+  .chat-text { color: #ffe99d; }
 
   /* ═══ Offline gains modal ════════════════════ */
   #offline-modal {
     position: fixed; inset: 0;
     display: none; align-items: center; justify-content: center;
-    background: rgba(0,0,0,.6);
+    background: rgba(0,0,0,.65);
     z-index: 50;
   }
   #offline-modal .modal-box {
-    background: #1a1510;
-    border: 2px solid #ffd700;
+    background: #0f1a28;
+    border: 1px solid #834848;
     border-radius: 10px;
-    padding: 24px 32px;
+    padding: 28px 36px;
     text-align: center;
-    max-width: 300px;
+    max-width: 320px;
+    box-shadow: 0 8px 40px rgba(0,0,0,.7), 0 0 20px rgba(131,72,72,.2);
   }
   #offline-modal h2 {
-    color: #ffd700; margin-bottom: 12px; font-size: 18px;
+    color: #ffd543; margin-bottom: 14px; font-size: 19px;
+    text-shadow: 0 0 10px rgba(255,213,67,.3);
   }
-  #offline-modal .gains { color: #d4c5a9; font-size: 14px; line-height: 1.6; margin-bottom: 16px; }
-  #offline-modal .gains b { color: #e06050; }
+  #offline-modal .gains { color: #ffe99d; font-size: 14px; line-height: 1.7; margin-bottom: 18px; }
+  #offline-modal .gains b { color: #d88b46; }
   #offline-modal button {
-    padding: 8px 24px;
-    border: 1px solid #ffd700; border-radius: 4px;
-    background: #3a3020; color: #ffd700;
+    padding: 9px 28px;
+    border: 1px solid #834848; border-radius: 5px;
+    background: rgba(131,72,72,.2); color: #ffd543;
     cursor: pointer; font-size: 13px; font-family: inherit;
+    transition: background .2s;
   }
+  #offline-modal button:hover { background: rgba(131,72,72,.35); }
+
+  /* ═══ Minimap ════════════════════════════════ */
+  #minimap-wrap {
+    position: fixed; bottom: 156px; right: 8px;
+    z-index: 15;
+  }
+  #minimap {
+    display: block;
+    border: 1px solid #834848;
+    border-radius: 4px;
+    cursor: crosshair;
+    image-rendering: pixelated;
+    box-shadow: 0 2px 10px rgba(0,0,0,.5);
+  }
+  #minimap-label {
+    text-align: center; font-size: 9px; color: #834848;
+    margin-top: 3px;
+  }
+
+  /* ═══ Center button ══════════════════════════ */
+  #btn-center {
+    padding: 3px 9px;
+    border: 1px solid #834848; border-radius: 3px;
+    background: transparent; color: #ffd543;
+    cursor: pointer; font-size: 13px; font-family: inherit;
+    transition: background .2s;
+  }
+  #btn-center:hover { background: rgba(131,72,72,.25); }
+
+  /* ═══ View toggle button ══════════════════════ */
+  #btn-world-view {
+    padding: 3px 11px;
+    border: 1px solid #834848; border-radius: 3px;
+    background: transparent; color: #d88b46;
+    cursor: pointer; font-size: 12px; font-family: inherit;
+    transition: background .2s, border-color .2s, opacity .2s;
+    white-space: nowrap;
+  }
+  #btn-world-view:hover:not(:disabled) { background: rgba(216,139,70,.18); border-color: #d88b46; }
+  #btn-world-view:disabled { opacity: .35; cursor: default; color: #834848; }
+  #btn-world-view.world-active { color: #ad5542; border-color: #ad5542; }
+  #btn-world-view.world-active:hover:not(:disabled) { background: rgba(173,85,66,.18); }
+
+  /* ═══ View fade overlay ══════════════════════ */
+  #view-fade {
+    position: fixed; inset: 0; background: #080e16;
+    opacity: 0; pointer-events: none; z-index: 5;
+    transition: opacity .22s ease;
+  }
+
+  /* ═══ Canvas cursor ══════════════════════════ */
+  #canvas-main { cursor: default; }
+  #canvas-main.world-mode { cursor: grab; }
+  #canvas-main.dragging { cursor: grabbing; }
+
+  /* ═══ Scrollbar styling ══════════════════════ */
+  .panel::-webkit-scrollbar,
+  #player-list::-webkit-scrollbar { width: 4px; }
+  .panel::-webkit-scrollbar-track,
+  #player-list::-webkit-scrollbar-track { background: transparent; }
+  .panel::-webkit-scrollbar-thumb,
+  #player-list::-webkit-scrollbar-thumb { background: #834848; border-radius: 2px; }
 
   /* ═══ Mobile ══════════════════════════════════ */
   @media (max-width: 700px) {
-    #panel-upgrades { width: 150px; font-size: 11px; }
-    #panel-raids { width: 150px; font-size: 11px; }
+    #panel-upgrades { width: 152px; font-size: 11px; }
+    #panel-raids { width: 152px; font-size: 11px; }
     #panel-players { height: 100px; }
     .hud-item { padding: 4px 6px; }
     .hud-item .label { display: none; }
+    #minimap-wrap { display: none; }
   }
 </style>
 </head>
@@ -301,6 +414,7 @@
 
 <!-- ═══ Game Screen ════════════════════════════ -->
 <div id="game-screen">
+  <div id="view-fade"></div>
   <canvas id="canvas-main"></canvas>
 
   <!-- HUD -->
@@ -323,6 +437,8 @@
       <span class="value" id="hud-boats">0/0</span>
     </div>
     <div class="hud-shield" id="hud-shield"></div>
+    <button id="btn-world-view" title="">🗺 World Map</button>
+    <button id="btn-center" title="Center on my island" style="display:none">⌖</button>
     <button id="hud-lang-btn">RU</button>
   </div>
 
@@ -380,6 +496,12 @@
   <div class="panel" id="panel-players">
     <h3 data-i18n="other_pirates">Other Pirates</h3>
     <div id="player-list"></div>
+  </div>
+
+  <!-- Minimap (скрыта в base mode) -->
+  <div id="minimap-wrap" style="display:none">
+    <canvas id="minimap" width="180" height="120"></canvas>
+    <div id="minimap-label">World Map</div>
   </div>
 
   <!-- Toast area -->
@@ -483,6 +605,8 @@
       send_raid: 'Send Boat on Raid',
       no_raids: 'No active raids',
       raid_n: 'Raid #{0}',
+      raid_archi: 'Archi #{0}',
+      raid_res: 'Res. isl. #{0}',
       remaining: '{0} remaining',
       // Players
       other_pirates: 'Other Pirates',
@@ -512,6 +636,25 @@
       level_n: 'Level {0}',
       debris_label: 'Debris: {0} gold (collecting...)',
       rum_sec_label: '+{0} rum/sec',
+      wood_sec_label: '+{0} wood/sec',
+      archi_sending: 'Boat sent to island! ~{0}s',
+      archi_done: '+{0} {1}! Island {2} depleted for {3}m.',
+      archi_lost: 'Boat lost at island {0}!',
+      archi_depleted_tip: 'Depleted ({0}m)',
+      archi_busy_tip: 'Harvesting…',
+      res_island_sending: 'Boat sent to resource island! ~{0}s',
+      res_island_done: '+{0} {1}! Island depleted for {2}m.',
+      res_island_lost: 'Boat lost at sea!',
+      res_island_depleted_tip: 'Depleted ({0}m)',
+      res_island_busy_tip: 'En route…',
+      // Attack
+      attack_launched: 'Attack launched! ETA: ~{0}s',
+      attack_hit: 'Attack hit {0}! Stole {1}r, {2}g, {3}w',
+      attack_shielded: 'Attack failed — target shielded',
+      center_tip: 'Center',
+      world_map_btn: '🗺 World Map',
+      home_btn: '🏠 My Island',
+      world_locked: 'Unlocks at Island Level {0}',
     },
     ru: {
       subtitle: 'Idle PvPvE пиратская стратегия',
@@ -531,6 +674,8 @@
       send_raid: 'Отправить лодку в рейд',
       no_raids: 'Нет активных рейдов',
       raid_n: 'Рейд #{0}',
+      raid_archi: 'Архип. #{0}',
+      raid_res: 'Остров #{0}',
       remaining: '{0} осталось',
       other_pirates: 'Другие пираты',
       no_players: 'Других пиратов пока нет',
@@ -556,6 +701,24 @@
       level_n: 'Уровень {0}',
       debris_label: 'Обломки: {0} золота (сбор...)',
       rum_sec_label: '+{0} ром/сек',
+      wood_sec_label: '+{0} дерева/сек',
+      archi_sending: 'Лодка отправлена! ~{0}с',
+      archi_done: '+{0} {1}! Остров {2} истощён на {3}м.',
+      archi_lost: 'Лодка потеряна у острова {0}!',
+      archi_depleted_tip: 'Истощён ({0}м)',
+      archi_busy_tip: 'Собирается…',
+      res_island_sending: 'Лодка отправлена к острову! ~{0}с',
+      res_island_done: '+{0} {1}! Остров истощён на {2}м.',
+      res_island_lost: 'Лодка потеряна в море!',
+      res_island_depleted_tip: 'Истощён ({0}м)',
+      res_island_busy_tip: 'В пути…',
+      attack_launched: 'Атака запущена! ETA: ~{0}с',
+      attack_hit: 'Атака попала! Украдено {1}р, {2}з, {3}д у {0}',
+      attack_shielded: 'Атака провалилась — цель под щитом',
+      center_tip: 'Центр',
+      world_map_btn: '🗺 Карта мира',
+      home_btn: '🏠 Мой остров',
+      world_locked: 'Открывается на уровне острова {0}',
     }
   };
 
@@ -640,17 +803,89 @@
   const offlineModal = document.getElementById('offline-modal');
   const offlineGainsText = document.getElementById('offline-gains-text');
   const btnOfflineOk = document.getElementById('btn-offline-ok');
+  const btnCenter = document.getElementById('btn-center');
+  const btnWorldView = document.getElementById('btn-world-view');
+  const viewFade = document.getElementById('view-fade');
+  const minimapCanvas = document.getElementById('minimap');
+  const mmCtx = minimapCanvas.getContext('2d');
 
   // Lang toggle buttons
   document.getElementById('login-lang-btn').addEventListener('click', toggleLang);
   document.getElementById('hud-lang-btn').addEventListener('click', toggleLang);
 
+  // ── World constants (mirror server) ──────────
+  const MAP_W = 3000;
+  const MAP_H = 2000;
+
   // ── State ─────────────────────────────────────
   let myNick = null;
   let playersArr = [];
+  let pvpMissions = [];
   let myRaids = [];
   let animFrame = 0;
   let chatLines = [];
+  let myArchiRaids    = [];  // [{idx, startTime, duration, type}]
+  let myArchiDepleted = {};  // {idx: timestamp}
+  let archiHitZones   = [];  // [{ix, iy, size, idx}] — обновляется в drawArchipelagoAt
+  let worldResourceIslands = []; // [{id, x, y, type, size, depleted_until}]
+  let myResourceRaids = [];      // [{islandId, startTime, duration}]
+  let resHitZones = [];          // [{id, wx, wy, size}] — обновляется в drawResourceIslands
+
+  // ── Assets ────────────────────────────────────
+  const imgIsland = new Image();
+  imgIsland.src = 'assets/sprites/islands/island1.png';
+
+  // ── Архипелаг — детерминированная генерация по нику ───
+  // Зеркало серверных функций archSeed / getArchipelagoCount
+  function archSeed(nick, i) {
+    let h = 0;
+    for (let j = 0; j < nick.length; j++) h = (h * 31 + nick.charCodeAt(j)) & 0xffffffff;
+    return ((h ^ (i * 2654435761)) >>> 0);
+  }
+  function getArchipelagoCount(nick) {
+    return 2 + (archSeed(nick, 0) % 3); // 2–4
+  }
+  const ARCHI_TYPES  = ['wood', 'wood', 'stone', 'rum'];
+  const ARCHI_ICONS  = { wood: '🌲', stone: '⛰️', rum: '🍺' };
+  const ARCHI_COLORS = { wood: '#3d7a38', stone: '#7a7060', rum: '#b86020' };
+  const ARCHI_WOOD_PER_SEC = 0.4; // зеркало серверной константы
+
+  function getArchipelago(nick) {
+    const count = getArchipelagoCount(nick);
+    const result = [];
+    for (let i = 0; i < count; i++) {
+      const s1 = archSeed(nick, i * 3 + 1);
+      const s2 = archSeed(nick, i * 3 + 2);
+      const s3 = archSeed(nick, i * 3 + 3);
+      // Равномерное распределение + ±20° случайный сдвиг — нет кластеров
+      const baseAngleDeg = (360 / count) * i + (s1 % 40) - 20;
+      const angle = baseAngleDeg * Math.PI / 180;
+      const dist  = 190 + (s2 % 50);           // 190–240 world units от центра
+      const type  = ARCHI_TYPES[s3 % ARCHI_TYPES.length];
+      const size  = 16 + (s3 % 14);            // 16–30 px (в world units)
+      result.push({ dx: Math.cos(angle) * dist, dy: Math.sin(angle) * dist, type, size });
+    }
+    return result;
+  }
+
+  // ── Camera ────────────────────────────────────
+  let camera = { x: 0, y: 0 };
+  let needCenterOnSelf = true;
+
+  // ── View mode ─────────────────────────────────
+  // 'base' = только свой остров, крупным планом
+  // 'world' = карта со всеми игроками
+  let viewMode = 'base';
+  let viewZoom = 2.5;       // текущий zoom (анимированный)
+  let targetZoom = 2.5;     // целевой zoom
+  const ZOOM_BASE = 2.5;    // zoom для base view
+  const ZOOM_WORLD = 1.0;   // zoom для world view
+  const WORLD_UNLOCK_LVL = 3; // уровень острова для разблокировки карты
+
+  // ── Drag state ────────────────────────────────
+  let isDragging = false;
+  let dragStart = null;
+  let cameraOnDragStart = null;
 
   // Balance constants (mirror server)
   const TAVERN_BASE_COST = 400;
@@ -762,11 +997,123 @@
     offlineModal.style.display = 'none';
   });
 
+  // ── centerOnSelf ──────────────────────────────
+  function centerOnSelf() {
+    const m = me();
+    if (m && m.pos_x !== undefined) {
+      camera.x = m.pos_x - canvas.width / 2;
+      camera.y = m.pos_y - canvas.height / 2;
+    }
+  }
+
+  // ── View switching ────────────────────────────
+  function doViewSwitch(fn) {
+    // Плавный fade: затемнение → смена → появление
+    viewFade.style.opacity = '1';
+    viewFade.style.pointerEvents = 'all';
+    setTimeout(() => {
+      fn();
+      viewFade.style.opacity = '0';
+      viewFade.style.pointerEvents = 'none';
+    }, 230);
+  }
+
+  function switchToBase() {
+    doViewSwitch(() => {
+      viewMode = 'base';
+      targetZoom = ZOOM_BASE;
+      centerOnSelf();
+      // Обновить кнопку и курсор
+      btnWorldView.textContent = '🗺 World Map';
+      btnWorldView.classList.remove('world-active');
+      btnCenter.style.display = 'none';
+      canvas.classList.remove('world-mode');
+      // Скрыть миникарту в base режиме
+      document.getElementById('minimap-wrap').style.display = 'none';
+    });
+  }
+
+  function switchToWorld() {
+    doViewSwitch(() => {
+      viewMode = 'world';
+      targetZoom = ZOOM_WORLD;
+      centerOnSelf(); // начинаем у своего острова
+      btnWorldView.textContent = '🏠 My Island';
+      btnWorldView.classList.add('world-active');
+      btnCenter.style.display = '';
+      canvas.classList.add('world-mode');
+      document.getElementById('minimap-wrap').style.display = '';
+    });
+  }
+
+  // Кнопка переключения вида
+  btnWorldView.addEventListener('click', () => {
+    if (viewMode === 'base') {
+      const m = me();
+      if (!m || m.island_level < WORLD_UNLOCK_LVL) return;
+      switchToWorld();
+    } else {
+      switchToBase();
+    }
+  });
+
   // ── Socket events ─────────────────────────────
   socket.on('state', (data) => {
     playersArr = data.players || [];
+    pvpMissions = data.pvpMissions || [];
+    if (data.resourceIslands) worldResourceIslands = data.resourceIslands;
+    // Синхронизируем archi-данные своего игрока из стейта
+    const m = me();
+    if (m) {
+      myArchiRaids    = m.archi_raids    || [];
+      myArchiDepleted = m.archi_depleted || {};
+      myResourceRaids = m.resource_raids || [];
+    }
     updateHUD();
     updatePlayerList();
+    updateRaidPanel();
+    if (needCenterOnSelf) {
+      if (m && m.pos_x !== undefined) {
+        centerOnSelf();
+        needCenterOnSelf = false;
+      }
+    }
+  });
+
+  socket.on('archiResult', (data) => {
+    const resName = { wood: '🌲 wood', gold: '💰 gold', rum: '🍺 rum' }[data.resource] || data.resource;
+    if (data.boatLost) {
+      showToast(t('archi_lost', data.idx + 1), 'bad');
+    }
+    const minDep = Math.ceil((data.depletedUntil - Date.now()) / 60000);
+    showToast(t('archi_done', data.amount, resName, data.idx + 1, minDep), 'good');
+    // Обновляем локальное состояние немедленно (не ждём следующего state-broadcast)
+    myArchiRaids    = myArchiRaids.filter(r => r.idx !== data.idx);
+    myArchiDepleted[data.idx] = data.depletedUntil;
+  });
+
+  socket.on('resourceRaidResult', (data) => {
+    const resName = { wood: '🌲 wood', gold: '💰 gold', rum: '🍺 rum' }[data.resource] || data.resource;
+    if (data.boatLost) showToast(t('res_island_lost'), 'bad');
+    const minDep = Math.ceil((data.depletedUntil - Date.now()) / 60000);
+    showToast(t('res_island_done', data.amount, resName, minDep), 'good');
+    myResourceRaids = myResourceRaids.filter(r => r.islandId !== data.islandId);
+    // Mark island depleted locally
+    const isl = worldResourceIslands.find(i => i.id === data.islandId);
+    if (isl) isl.depleted_until = data.depletedUntil;
+  });
+
+  socket.on('pvpMissions', (list) => {
+    pvpMissions = list || [];
+  });
+
+  socket.on('attackResult', (data) => {
+    if (data.ok) {
+      const s = data.stolen;
+      showToast(t('attack_hit', data.target, s.rum, s.gold, s.wood), 'good');
+    } else {
+      showToast(data.msg || t('attack_shielded'), 'bad');
+    }
   });
 
   socket.on('raidsUpdate', (raids) => {
@@ -799,7 +1146,10 @@
     if (myNick) {
       const password = inputPassword.value || '';
       socket.emit('join', { nick: myNick, password }, (resp) => {
-        if (resp.ok) console.log('[RECONNECT] Restored session for', myNick);
+        if (resp.ok) {
+          console.log('[RECONNECT] Restored session for', myNick);
+          needCenterOnSelf = true;
+        }
       });
     }
   });
@@ -845,22 +1195,70 @@
     btnUpIsland.disabled = m.rum < Math.floor(1000 * Math.pow(2, m.island_level - 1)) ||
                            m.wood < Math.floor(500 * Math.pow(2, m.island_level - 1));
     btnSendRaid.disabled = m.boats <= 0;
+
+    // World Map button: доступно только начиная с WORLD_UNLOCK_LVL
+    if (viewMode === 'base') {
+      const canUnlock = m.island_level >= WORLD_UNLOCK_LVL;
+      btnWorldView.disabled = !canUnlock;
+      if (canUnlock) {
+        btnWorldView.textContent = t('world_map_btn');
+        btnWorldView.title = '';
+      } else {
+        btnWorldView.textContent = `🗺 ${t('world_locked', WORLD_UNLOCK_LVL)}`;
+        btnWorldView.title = '';
+      }
+    } else {
+      btnWorldView.disabled = false;
+      btnWorldView.textContent = t('home_btn');
+    }
   }
 
   // ── Raid panel ────────────────────────────────
   function updateRaidPanel() {
-    if (myRaids.length === 0) {
+    const now = Date.now();
+    const items = [];
+
+    myRaids.forEach((r, i) => {
+      const remaining = Math.max(0, r.remaining ?? (r.startTime + r.duration - now));
+      items.push({
+        label: t('raid_n', i + 1),
+        remaining,
+        duration: r.duration,
+        progress: r.duration ? Math.min(1, 1 - remaining / r.duration) : 0
+      });
+    });
+    (myArchiRaids || []).forEach((r, i) => {
+      const remaining = Math.max(0, r.startTime + r.duration - now);
+      items.push({
+        label: t('raid_archi', r.idx + 1) + (r.type ? ` (${r.type})` : ''),
+        remaining,
+        duration: r.duration,
+        progress: r.duration ? Math.min(1, (now - r.startTime) / r.duration) : 0
+      });
+    });
+    (myResourceRaids || []).forEach((r, i) => {
+      const remaining = Math.max(0, r.startTime + r.duration - now);
+      const isl = worldResourceIslands.find(w => w.id === r.islandId);
+      const typeStr = isl ? ` (${isl.type})` : '';
+      items.push({
+        label: t('raid_res', r.islandId) + typeStr,
+        remaining,
+        duration: r.duration,
+        progress: r.duration ? Math.min(1, (now - r.startTime) / r.duration) : 0
+      });
+    });
+
+    if (items.length === 0) {
       raidList.innerHTML = `<div class="raid-empty">${t('no_raids')}</div>`;
       return;
     }
-    raidList.innerHTML = myRaids.map((r, i) => {
-      const remainMin = Math.floor(r.remaining / 60000);
-      const remainSec = Math.floor((r.remaining % 60000) / 1000);
-      const progress = Math.min(1, 1 - (r.remaining / r.duration));
+    raidList.innerHTML = items.map(it => {
+      const remainMin = Math.floor(it.remaining / 60000);
+      const remainSec = Math.floor((it.remaining % 60000) / 1000);
       const timeStr = `${remainMin}:${String(remainSec).padStart(2, '0')}`;
       return `<div class="raid-item">
-        <div>${t('raid_n', i + 1)}</div>
-        <div class="raid-bar"><div class="raid-bar-fill" style="width:${(progress * 100).toFixed(1)}%"></div></div>
+        <div>${it.label}</div>
+        <div class="raid-bar"><div class="raid-bar-fill" style="width:${(it.progress * 100).toFixed(1)}%"></div></div>
         <div class="raid-time">${t('remaining', timeStr)}</div>
       </div>`;
     }).join('');
@@ -871,7 +1269,9 @@
     myRaids.forEach(r => {
       if (r.remaining > 0) { r.remaining = Math.max(0, r.remaining - 1000); changed = true; }
     });
-    if (changed) updateRaidPanel();
+    if (changed || (myArchiRaids && myArchiRaids.length > 0) || (myResourceRaids && myResourceRaids.length > 0)) {
+      updateRaidPanel();
+    }
   }, 1000);
 
   // ── Player list ───────────────────────────────
@@ -897,17 +1297,149 @@
       btn.addEventListener('click', () => {
         const target = btn.getAttribute('data-nick');
         if (!confirm(t('confirm_attack', target))) return;
-        socket.emit('attackPlayer', { targetNick: target }, (resp) => {
+        doAttack(target);
+      });
+    });
+  }
+
+  // ── Attack helper ─────────────────────────────
+  function doAttack(targetNick) {
+    socket.emit('attackPlayer', { targetNick }, (resp) => {
+      if (resp.ok && resp.launched) {
+        showToast(t('attack_launched', resp.eta), 'good');
+      } else {
+        showToast(resp.msg, 'bad');
+      }
+    });
+  }
+
+  // ── Center button ─────────────────────────────
+  btnCenter.addEventListener('click', centerOnSelf);
+
+  // ── Camera drag ────────────────────────────────
+  let clickWasDrag = false;
+
+  canvas.addEventListener('mousedown', (e) => {
+    if (e.button !== 0 || viewMode !== 'world') return;
+    isDragging = false;
+    clickWasDrag = false;
+    dragStart = { x: e.clientX, y: e.clientY };
+    cameraOnDragStart = { x: camera.x, y: camera.y };
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+    if (!dragStart || viewMode !== 'world') return;
+    const dx = e.clientX - dragStart.x;
+    const dy = e.clientY - dragStart.y;
+    if (!isDragging && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+      isDragging = true;
+      clickWasDrag = true;
+      canvas.classList.add('dragging');
+    }
+    if (isDragging) {
+      camera.x = cameraOnDragStart.x - dx;
+      camera.y = cameraOnDragStart.y - dy;
+    }
+  });
+
+  canvas.addEventListener('mouseup', () => {
+    dragStart = null;
+    isDragging = false;
+    canvas.classList.remove('dragging');
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    dragStart = null;
+    isDragging = false;
+    canvas.classList.remove('dragging');
+  });
+
+  // ── Клик по островку архипелага (base mode) ───────────
+  function tryHarvestArchiAt(clientX, clientY) {
+    if (viewMode !== 'base' || archiHitZones.length === 0) return;
+    const W = canvas.width, H = canvas.height;
+    // archiHitZones хранят ix/iy в pre-zoom screen space.
+    // Zoom-трансформация: rendered = W/2 + (pre - W/2) * zoom
+    // Обратно: pre = W/2 + (clientX - W/2) / zoom
+    const preX = W / 2 + (clientX - W / 2) / viewZoom;
+    const preY = H / 2 + (clientY - H / 2) / viewZoom;
+    for (const z of archiHitZones) {
+      const dist = Math.hypot(preX - z.ix, preY - z.iy);
+      if (dist <= z.size) {
+        socket.emit('harvestArchi', { idx: z.idx }, (resp) => {
           if (resp.ok) {
-            const s = resp.stolen;
-            showToast(t('raided_ok', target, s.rum, s.gold, s.wood), 'good');
+            showToast(t('archi_sending', Math.round(resp.duration / 1000)), 'good');
+            myArchiRaids.push({ idx: resp.idx, startTime: Date.now(), duration: resp.duration, type: resp.type });
           } else {
             showToast(resp.msg, 'bad');
           }
         });
-      });
-    });
+        return; // один клик — одна цель
+      }
+    }
   }
+
+  // ── Клик по ресурсному острову (world mode) ───────────
+  function tryHarvestResourceIslandAt(clientX, clientY) {
+    if (viewMode !== 'world' || resHitZones.length === 0) return;
+    // world coords: wx = camera.x + clientX (since camera is top-left, no zoom here)
+    const W = canvas.width, H = canvas.height;
+    const wx = camera.x + (clientX - W / 2) / viewZoom + W / 2;
+    const wy = camera.y + (clientY - H / 2) / viewZoom + H / 2;
+    for (const z of resHitZones) {
+      const dist = Math.hypot(wx - z.wx, wy - z.wy);
+      if (dist <= z.size) {
+        socket.emit('harvestResourceIsland', { islandId: z.id }, (resp) => {
+          if (resp.ok) {
+            showToast(t('res_island_sending', Math.round(resp.duration / 1000)), 'good');
+            myResourceRaids.push({ islandId: resp.islandId, startTime: Date.now(), duration: resp.duration });
+          } else {
+            showToast(resp.msg, 'bad');
+          }
+        });
+        return;
+      }
+    }
+  }
+
+  canvas.addEventListener('click', (e) => {
+    if (clickWasDrag) { clickWasDrag = false; return; }
+    tryHarvestArchiAt(e.clientX, e.clientY);
+    tryHarvestResourceIslandAt(e.clientX, e.clientY);
+  });
+
+  canvas.addEventListener('touchend', (e) => {
+    if (isDragging) return;
+    if (e.changedTouches.length > 0) {
+      const touch = e.changedTouches[0];
+      tryHarvestArchiAt(touch.clientX, touch.clientY);
+      tryHarvestResourceIslandAt(touch.clientX, touch.clientY);
+    }
+  });
+
+  // Touch drag (mobile, только в world mode)
+  canvas.addEventListener('touchstart', (e) => {
+    if (viewMode !== 'world') return;
+    const touch = e.touches[0];
+    isDragging = false;
+    dragStart = { x: touch.clientX, y: touch.clientY };
+    cameraOnDragStart = { x: camera.x, y: camera.y };
+  }, { passive: true });
+
+  canvas.addEventListener('touchmove', (e) => {
+    if (!dragStart || viewMode !== 'world') return;
+    const touch = e.touches[0];
+    const dx = touch.clientX - dragStart.x;
+    const dy = touch.clientY - dragStart.y;
+    isDragging = true;
+    camera.x = cameraOnDragStart.x - dx;
+    camera.y = cameraOnDragStart.y - dy;
+  }, { passive: true });
+
+  canvas.addEventListener('touchend', () => {
+    dragStart = null;
+    isDragging = false;
+  });
 
   // ── Upgrade buttons ───────────────────────────
   btnUpTavern.addEventListener('click', () => {
@@ -958,17 +1490,75 @@
     const H = canvas.height;
     ctx.clearRect(0, 0, W, H);
 
+    // Плавная анимация zoom
+    viewZoom += (targetZoom - viewZoom) * 0.07;
+
+    // В base mode камера всегда центрируется на своём острове
+    const m = me();
+    if (viewMode === 'base' && m && m.pos_x !== undefined) {
+      camera.x = m.pos_x - W / 2;
+      camera.y = m.pos_y - H / 2;
+    }
+
     drawWater(W, H);
 
-    const m = me();
-    if (m) {
-      drawIsland(W, H, m);
-      drawBuildings(W, H, m);
-      drawBoatsAtDock(W, H, m);
-      drawShieldDome(W, H, m);
-      drawDestructionOverlay(W, H, m);
-      drawRaidBoats(W, H, m);
-      drawInfoText(W, H, m);
+    // Zoom-трансформация вокруг центра экрана
+    const zoom = viewZoom;
+    const pivotX = W / 2;
+    const pivotY = H / 2;
+    ctx.save();
+    if (Math.abs(zoom - 1.0) > 0.01) {
+      ctx.translate(pivotX, pivotY);
+      ctx.scale(zoom, zoom);
+      ctx.translate(-pivotX, -pivotY);
+    }
+
+    // Отрисовка островов
+    for (const p of playersArr) {
+      if (p.pos_x === undefined) continue;
+      // В base mode рисуем только свой остров
+      const isMe = p.nick === myNick;
+      if (viewMode === 'base' && !isMe) continue;
+
+      const sx = Math.round(p.pos_x - camera.x);
+      const sy = Math.round(p.pos_y - camera.y);
+      const baseSize = 70 + p.island_level * 12;
+      // Frustum culling с учётом zoom — пивот в центре экрана
+      // imgSize = baseSize * 2.4, поэтому margin = imgSize/2 + padding
+      const margin = baseSize * 1.2 + 80;
+      const halfVW = W / (2 * zoom);
+      const halfVH = H / (2 * zoom);
+      if (sx < W / 2 - halfVW - margin || sx > W / 2 + halfVW + margin ||
+          sy < H / 2 - halfVH - margin || sy > H / 2 + halfVH + margin) continue;
+
+      drawArchipelagoAt(p, sx, sy);
+      drawIslandAt(p, sx, sy, isMe);
+      drawShieldDomeAt(p, sx, sy);
+      drawDestructionOverlayAt(p, sx, sy);
+      if (isMe) {
+        drawBuildingsAt(p, sx, sy);
+        drawBoatsAtDockAt(p, sx, sy);
+        drawRaidBoatsAt(p, sx, sy);
+        drawInfoTextAt(p, sx, sy);
+      } else {
+        drawOtherBoatsAt(p, sx, sy);
+      }
+    }
+
+    // Ресурсные острова, лодки в рейд на них и PvP миссии только в world mode
+    if (viewMode === 'world') {
+      drawResourceIslands();
+      drawResourceRaidBoats();
+      drawPvpMissions();
+    }
+
+    ctx.restore(); // сброс zoom-трансформации
+
+    // HUD-уровень: рисуется поверх, без зума
+    if (viewMode === 'base') {
+      drawIncomingPvpWarning(W, H);
+    } else {
+      drawMinimap(W, H);
     }
 
     requestAnimationFrame(draw);
@@ -981,12 +1571,15 @@
     const scale = 0.006; // noise scale
 
     function height(x, y, t) {
+      // Добавляем смещение камеры для прокрутки воды с миром
+      const wx = x + camera.x;
+      const wy = y + camera.y;
       let h = 0;
       let amp = 1;
       let f = 1;
       for (let o = 0; o < 4; o++) {
-        const nx = x * scale * f + t * (0.3 + o * 0.12) + o * 5;
-        const ny = y * scale * f + t * (0.2 + o * 0.1) + o * 3;
+        const nx = wx * scale * f + t * (0.3 + o * 0.12) + o * 5;
+        const ny = wy * scale * f + t * (0.2 + o * 0.1) + o * 3;
         h += simplex2D(nx, ny) * amp;
         amp *= 0.55;
         f *= 2;
@@ -1106,62 +1699,160 @@
     }
   }
 
-  // ── Island ────────────────────────────────────
-  function drawIsland(W, H, m) {
-    const cx = W / 2;
-    const cy = H / 2 - 20;
-    const baseSize = 70 + m.island_level * 12;
-    const rx = baseSize;
-    const ry = baseSize * 0.65;
-
-    // Island shadow
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+  // ── Общая функция рисования лодки ─────────────
+  function drawBoat(bx, by, bob, color, sailColor) {
+    ctx.fillStyle = color || '#8b4513';
     ctx.beginPath();
-    ctx.ellipse(cx + 4, cy + 6, rx + 5, ry + 5, 0, 0, Math.PI * 2);
+    ctx.moveTo(bx - 8, by + bob);
+    ctx.lineTo(bx + 8, by + bob);
+    ctx.lineTo(bx + 6, by + 5 + bob);
+    ctx.lineTo(bx - 6, by + 5 + bob);
     ctx.fill();
-
-    // Sand/beach ring
-    ctx.fillStyle = '#c2b280';
+    ctx.fillStyle = sailColor || '#f5f5dc';
     ctx.beginPath();
-    ctx.ellipse(cx, cy, rx + 6, ry + 6, 0, 0, Math.PI * 2);
+    ctx.moveTo(bx, by - 12 + bob);
+    ctx.lineTo(bx + 7, by + bob);
+    ctx.lineTo(bx - 1, by + bob);
     ctx.fill();
+  }
 
-    // Island body
-    const islandColors = ['#2d6b30', '#8b7d3c', '#6b2d2d'];
-    ctx.fillStyle = islandColors[m.destruction_state] || islandColors[0];
-    ctx.beginPath();
-    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
+  // ── Island (общий для своего и чужих) ─────────
+  function drawArchipelagoAt(p, cx, cy) {
+    const archi  = getArchipelago(p.nick);
+    const isMe   = p.nick === myNick;
+    const now    = Date.now();
+    if (isMe) archiHitZones = []; // обновляем только для себя
 
-    // Grass/terrain texture
-    ctx.fillStyle = 'rgba(0,0,0,0.1)';
-    const seed = m.nick.length * 7 + m.island_level;
-    for (let i = 0; i < 12; i++) {
-      const angle = (seed + i * 31) % 360 * (Math.PI / 180);
-      const dist = ((seed + i * 17) % 50 + 10) * (baseSize / 100);
-      const dx = cx + Math.cos(angle) * dist;
-      const dy = cy + Math.sin(angle) * dist * 0.65;
+    for (let i = 0; i < archi.length; i++) {
+      const isle = archi[i];
+      const ix = cx + isle.dx;
+      const iy = cy + isle.dy;
+      const rx = isle.size, ry = isle.size * 0.62;
+
+      // Статус (для своего острова)
+      const raid      = isMe ? myArchiRaids.find(r => r.idx === i) : null;
+      const deplUntil = isMe ? (myArchiDepleted[i] || 0) : 0;
+      const depleted  = deplUntil > now;
+      const busy      = !!raid;
+
+      if (isMe) archiHitZones.push({ ix, iy, size: rx + 10, idx: i });
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.15)';
       ctx.beginPath();
-      ctx.arc(dx, dy, 3 + (i % 3), 0, Math.PI * 2);
+      ctx.ellipse(ix + 3, iy + 4, rx * 0.85, ry * 0.85, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Beach
+      ctx.fillStyle = depleted ? '#9a8a5a' : '#c8b87a';
+      ctx.beginPath();
+      ctx.ellipse(ix, iy, rx + 3, ry + 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Surface
+      ctx.fillStyle = depleted ? '#5a5248' : (ARCHI_COLORS[isle.type] || '#3d7a38');
+      ctx.globalAlpha = depleted ? 0.6 : 1;
+      ctx.beginPath();
+      ctx.ellipse(ix, iy, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Иконка ресурса
+      const iconPx = Math.max(10, Math.round(rx * 0.9));
+      ctx.font = `${iconPx}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(depleted ? '💤' : (ARCHI_ICONS[isle.type] || '🌿'), ix, iy);
+
+      // Статус-метка (только для своего острова)
+      if (isMe) {
+        ctx.font = '9px Georgia, serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        if (busy) {
+          // Прогресс-бар сбора
+          const prog = Math.min(1, (now - raid.startTime) / raid.duration);
+          const bw = rx * 2, bh = 4;
+          ctx.fillStyle = 'rgba(10,18,30,0.7)';
+          ctx.fillRect(ix - bw / 2, iy + ry + 4, bw, bh);
+          ctx.fillStyle = '#ffd543';
+          ctx.fillRect(ix - bw / 2, iy + ry + 4, bw * prog, bh);
+          const secLeft = Math.ceil((raid.startTime + raid.duration - now) / 1000);
+          ctx.fillStyle = '#ffe99d';
+          ctx.fillText(`${secLeft}s`, ix, iy + ry + 10);
+        } else if (depleted) {
+          const minLeft = Math.ceil((deplUntil - now) / 60000);
+          ctx.fillStyle = '#834848';
+          ctx.fillText(t('archi_depleted_tip', minLeft), ix, iy + ry + 4);
+        } else {
+          // Подсказка «тап для сбора»
+          ctx.fillStyle = 'rgba(255,233,157,0.55)';
+          ctx.fillText('tap', ix, iy + ry + 4);
+        }
+      }
+    }
+  }
+
+  function drawIslandAt(p, cx, cy, isMe) {
+    const baseSize = 70 + p.island_level * 12;
+    const imgSize = baseSize * 2.4;
+    const hs = imgSize / 2;
+
+    // Soft drop shadow
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(cx + 8, cy + hs * 0.52, hs * 0.65, hs * 0.16, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+
+    // Island sprite
+    if (imgIsland.complete && imgIsland.naturalWidth > 0) {
+      ctx.drawImage(imgIsland, cx - hs, cy - hs, imgSize, imgSize);
+
+      // Destruction colour tint (ellipse over the land mass centre)
+      if (p.destruction_state > 0) {
+        ctx.save();
+        ctx.globalAlpha = p.destruction_state === 1 ? 0.28 : 0.50;
+        ctx.fillStyle = p.destruction_state === 1 ? '#b06020' : '#801818';
+        ctx.beginPath();
+        ctx.ellipse(cx, cy + baseSize * 0.08, baseSize * 0.75, baseSize * 0.47, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    } else {
+      // Fallback primitives while image loads
+      const islandColors = ['#2d6b30', '#8b7d3c', '#6b2d2d'];
+      ctx.fillStyle = islandColors[p.destruction_state] || islandColors[0];
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, baseSize, baseSize * 0.65, 0, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Island name
-    ctx.fillStyle = '#ffd700';
-    ctx.font = 'bold 16px Georgia, serif';
+    // Name label (above sprite top)
+    const topY = cy - hs - 2;
+    ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
-    ctx.fillText(t('island_of', m.nick), cx, cy - ry - 20);
-
-    ctx.fillStyle = '#d4c5a9';
-    ctx.font = '12px Georgia, serif';
-    ctx.fillText(t('level_n', m.island_level), cx, cy - ry - 6);
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 4;
+    ctx.font = `bold ${isMe ? 16 : 13}px Georgia, serif`;
+    ctx.fillStyle = isMe ? '#ffd543' : (p.online ? p.color : '#888');
+    ctx.fillText(t('island_of', p.nick), cx, topY);
+    ctx.font = `${isMe ? 12 : 10}px Georgia, serif`;
+    ctx.fillStyle = isMe ? '#ffe99d' : '#834848';
+    ctx.fillText(t('level_n', p.island_level), cx, topY + (isMe ? 14 : 12));
+    if (!p.online) {
+      ctx.fillStyle = '#666';
+      ctx.font = '9px Georgia, serif';
+      ctx.fillText('(offline)', cx, topY + 24);
+    }
+    ctx.restore();
   }
 
-  function drawBuildings(W, H, m) {
-    const cx = W / 2;
-    const cy = H / 2 - 20;
-    const baseSize = 70 + m.island_level * 12;
+  function drawBuildingsAt(p, cx, cy) {
+    const baseSize = 70 + p.island_level * 12;
+    const imgSize = baseSize * 2.4;
 
     // Tavern
     const tavX = cx - baseSize * 0.4;
@@ -1174,10 +1865,6 @@
     ctx.lineTo(tavX, tavY - 22);
     ctx.lineTo(tavX + 15, tavY - 12);
     ctx.fill();
-    ctx.fillStyle = '#ffd700';
-    ctx.font = '8px Georgia';
-    ctx.textAlign = 'center';
-    ctx.fillText(`${t('tavern').substring(0,3)} ${m.tavern_level}`, tavX, tavY + 18);
 
     // Dock
     const dockX = cx + baseSize * 0.3;
@@ -1185,15 +1872,12 @@
     ctx.fillStyle = '#654321';
     ctx.fillRect(dockX - 15, dockY - 4, 30, 8);
     ctx.fillRect(dockX + 12, dockY - 12, 4, 16);
-    ctx.fillStyle = '#ffd700';
-    ctx.font = '8px Georgia';
-    ctx.fillText(`${t('dock').substring(0,3)} ${m.dock_level}`, dockX, dockY + 16);
 
     // Cannons
-    if (m.cannon_level > 0) {
+    if (p.cannon_level > 0) {
       const canX = cx + baseSize * 0.55;
       const canY = cy - baseSize * 0.1;
-      for (let i = 0; i < Math.min(m.cannon_level, 5); i++) {
+      for (let i = 0; i < Math.min(p.cannon_level, 5); i++) {
         ctx.fillStyle = '#555';
         ctx.beginPath();
         ctx.arc(canX, canY + i * 14 - 14, 5, 0, Math.PI * 2);
@@ -1201,67 +1885,97 @@
         ctx.fillStyle = '#333';
         ctx.fillRect(canX + 3, canY + i * 14 - 16, 10, 4);
       }
-      ctx.fillStyle = '#ffd700';
-      ctx.font = '8px Georgia';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${t('cannons').substring(0,3)} ${m.cannon_level}`, canX + 5, canY + Math.min(m.cannon_level, 5) * 14 + 4);
     }
+
+    // Floating badge chips с уровнями поверх фигур
+    const badges = [
+      { label: `🍺 ${p.tavern_level}`, x: tavX,           y: tavY + 26 },
+      { label: `⚓ ${p.dock_level}`,   x: dockX,           y: dockY + 18 },
+    ];
+    if (p.cannon_level > 0) {
+      const canX = cx + baseSize * 0.55;
+      const canY = cy - baseSize * 0.1;
+      badges.push({ label: `💣 ${p.cannon_level}`, x: canX + 10, y: canY + Math.min(p.cannon_level, 5) * 14 + 6 });
+    }
+
+    ctx.save();
+    ctx.font = 'bold 10px Georgia, serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    for (const b of badges) {
+      const tw = ctx.measureText(b.label).width;
+      const bw = tw + 8, bh = 14;
+      ctx.fillStyle = 'rgba(10,18,30,0.82)';
+      ctx.strokeStyle = '#834848';
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.roundRect(b.x - bw / 2, b.y - bh / 2, bw, bh, 3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#ffd543';
+      ctx.fillText(b.label, b.x, b.y);
+    }
+    ctx.restore();
   }
 
-  function drawBoatsAtDock(W, H, m) {
-    const cx = W / 2;
-    const cy = H / 2 - 20;
-    const baseSize = 70 + m.island_level * 12;
+  function drawBoatsAtDockAt(p, cx, cy) {
+    const baseSize = 70 + p.island_level * 12;
     const dockX = cx + baseSize * 0.3;
     const dockY = cy + baseSize * 0.45;
-
-    for (let i = 0; i < Math.min(m.boats, 6); i++) {
+    for (let i = 0; i < Math.min(p.boats, 6); i++) {
       const bx = dockX - 20 - i * 12;
       const by = dockY + 10 + Math.sin(animFrame * 0.05 + i) * 2;
-      ctx.fillStyle = '#8b4513';
-      ctx.beginPath();
-      ctx.moveTo(bx - 6, by);
-      ctx.lineTo(bx + 6, by);
-      ctx.lineTo(bx + 4, by + 4);
-      ctx.lineTo(bx - 4, by + 4);
-      ctx.fill();
-      ctx.fillStyle = '#f5f5dc';
-      ctx.beginPath();
-      ctx.moveTo(bx, by - 8);
-      ctx.lineTo(bx + 5, by);
-      ctx.lineTo(bx - 1, by);
-      ctx.fill();
+      drawBoat(bx, by, 0, '#8b4513', '#f5f5dc');
     }
   }
 
-  function drawShieldDome(W, H, m) {
-    if (m.shield_until <= Date.now()) return;
+  // Лодки других игроков у дока (упрощённые)
+  function drawOtherBoatsAt(p, cx, cy) {
+    if (p.boats <= 0) return;
+    const baseSize = 70 + p.island_level * 12;
+    const dockX = cx + baseSize * 0.3;
+    const dockY = cy + baseSize * 0.45;
+    for (let i = 0; i < Math.min(p.boats, 4); i++) {
+      const bx = dockX - 14 - i * 10;
+      const by = dockY + 8 + Math.sin(animFrame * 0.04 + i + p.nick.length) * 2;
+      ctx.fillStyle = p.color || '#8b4513';
+      ctx.globalAlpha = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(bx - 5, by); ctx.lineTo(bx + 5, by);
+      ctx.lineTo(bx + 3, by + 4); ctx.lineTo(bx - 3, by + 4);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    // Количество рейдов
+    if (p.active_raids > 0) {
+      ctx.fillStyle = '#64b5f6';
+      ctx.font = '9px Georgia';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(`⚓${p.active_raids}`, dockX, dockY + 28);
+    }
+  }
 
-    const cx = W / 2;
-    const cy = H / 2 - 20;
-    const baseSize = 70 + m.island_level * 12;
-    const r = baseSize + 30;
-
+  function drawShieldDomeAt(p, cx, cy) {
+    if (p.shield_until <= Date.now()) return;
+    const baseSize = 70 + p.island_level * 12;
+    // Радиус чуть больше половины спрайта (imgSize * 2.4 / 2 = baseSize * 1.2)
+    const r = baseSize * 1.5;
     const pulse = 0.15 + Math.sin(animFrame * 0.03) * 0.05;
     ctx.strokeStyle = `rgba(79, 195, 247, ${pulse + 0.1})`;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.ellipse(cx, cy, r, r * 0.7, 0, 0, Math.PI * 2);
     ctx.stroke();
-
     ctx.fillStyle = `rgba(79, 195, 247, ${pulse * 0.3})`;
     ctx.fill();
   }
 
-  function drawDestructionOverlay(W, H, m) {
-    if (m.destruction_state === 0) return;
-
-    const cx = W / 2;
-    const cy = H / 2 - 20;
-    const baseSize = 70 + m.island_level * 12;
-
+  function drawDestructionOverlayAt(p, cx, cy) {
+    if (p.destruction_state === 0) return;
+    const baseSize = 70 + p.island_level * 12;
     ctx.globalAlpha = 0.4;
-    if (m.destruction_state >= 1) {
+    if (p.destruction_state >= 1) {
       ctx.strokeStyle = '#333';
       ctx.lineWidth = 2;
       for (let i = 0; i < 4; i++) {
@@ -1273,7 +1987,7 @@
         ctx.stroke();
       }
     }
-    if (m.destruction_state >= 2) {
+    if (p.destruction_state >= 2) {
       for (let i = 0; i < 6; i++) {
         const sx = cx + (Math.random() - 0.5) * baseSize;
         const sy = cy - baseSize * 0.3 - Math.random() * 30 - (animFrame * 0.3 + i * 10) % 40;
@@ -1286,73 +2000,391 @@
     ctx.globalAlpha = 1;
   }
 
-  function drawRaidBoats(W, H, m) {
+  function drawRaidBoatsAt(p, cx, cy) {
     if (myRaids.length === 0) return;
-
     myRaids.forEach((r, i) => {
       const progress = Math.min(1, 1 - (r.remaining / r.duration));
       const angle = -Math.PI / 2 + (i * 0.8 - (myRaids.length - 1) * 0.4);
       const dist = 120 + progress * 200;
-      const bx = W / 2 + Math.cos(angle) * dist;
-      const by = H / 2 - 20 + Math.sin(angle) * dist * 0.5;
-
+      const bx = cx + Math.cos(angle) * dist;
+      const by = cy + Math.sin(angle) * dist * 0.5;
       const bob = Math.sin(animFrame * 0.06 + i) * 2;
 
       // Wake trail
       ctx.strokeStyle = 'rgba(255,255,255,0.1)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let t = 0; t < 20; t++) {
-        const tp = Math.max(0, progress - t * 0.005);
+      for (let tt = 0; tt < 20; tt++) {
+        const tp = Math.max(0, progress - tt * 0.005);
         const td = 120 + tp * 200;
-        const tx = W / 2 + Math.cos(angle) * td;
-        const ty = H / 2 - 20 + Math.sin(angle) * td * 0.5;
-        if (t === 0) ctx.moveTo(tx, ty + bob);
+        const tx = cx + Math.cos(angle) * td;
+        const ty = cy + Math.sin(angle) * td * 0.5;
+        if (tt === 0) ctx.moveTo(tx, ty + bob);
         else ctx.lineTo(tx, ty);
       }
       ctx.stroke();
 
-      // Boat hull
-      ctx.fillStyle = '#8b4513';
-      ctx.beginPath();
-      ctx.moveTo(bx - 8, by + bob);
-      ctx.lineTo(bx + 8, by + bob);
-      ctx.lineTo(bx + 6, by + 5 + bob);
-      ctx.lineTo(bx - 6, by + 5 + bob);
-      ctx.fill();
-      // Sail
-      ctx.fillStyle = '#f5f5dc';
-      ctx.beginPath();
-      ctx.moveTo(bx, by - 12 + bob);
-      ctx.lineTo(bx + 7, by + bob);
-      ctx.lineTo(bx - 1, by + bob);
-      ctx.fill();
+      drawBoat(bx, by, bob);
 
-      // Timer
       const remainMin = Math.floor(r.remaining / 60000);
       const remainSec = Math.floor((r.remaining % 60000) / 1000);
       ctx.fillStyle = '#64b5f6';
       ctx.font = '10px Georgia';
       ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
       ctx.fillText(`${remainMin}:${String(remainSec).padStart(2, '0')}`, bx, by - 16);
     });
   }
 
-  function drawInfoText(W, H, m) {
-    if (m.debris_gold > 0) {
+  function drawInfoTextAt(p, cx, cy) {
+    const baseSize = 70 + p.island_level * 12;
+    const bottomY = cy + baseSize * 1.2 + 8;
+    if (p.debris_gold > 0) {
       ctx.fillStyle = '#ffd700';
       ctx.font = '12px Georgia';
       ctx.textAlign = 'center';
-      ctx.fillText(t('debris_label', formatNum(m.debris_gold)), W / 2, H / 2 + 100 + m.island_level * 8);
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(t('debris_label', formatNum(p.debris_gold)), cx, bottomY + 14);
     }
-
-    ctx.fillStyle = 'rgba(212,197,169,0.6)';
     ctx.font = '11px Georgia';
     ctx.textAlign = 'center';
-    const rate = BASE_RUM + (m.tavern_level - 1) * RUM_PER_TAV;
-    const legacyMult = 1 + m.legacy_bonus;
-    ctx.fillText(t('rum_sec_label', Math.floor(rate * legacyMult)), W / 2, H / 2 + 115 + m.island_level * 8);
+    const rate = BASE_RUM + (p.tavern_level - 1) * RUM_PER_TAV;
+    const legacyMult = 1 + p.legacy_bonus;
+    ctx.fillStyle = 'rgba(255,213,67,0.65)';
+    ctx.fillText(t('rum_sec_label', Math.floor(rate * legacyMult)), cx, bottomY + 28);
+    const woodRate = (ARCHI_WOOD_PER_SEC * getArchipelagoCount(p.nick)).toFixed(1);
+    ctx.fillStyle = 'rgba(168,192,96,0.65)';
+    ctx.fillText(t('wood_sec_label', woodRate), cx, bottomY + 42);
   }
+
+  // ── Предупреждение о входящей атаке (base mode) ──
+  function drawIncomingPvpWarning(W, H) {
+    const m = me();
+    if (!m) return;
+    const incoming = pvpMissions.filter(mi => mi.targetNick === myNick);
+    if (incoming.length === 0) return;
+
+    // Мигающий красный индикатор в углу
+    const alpha = 0.5 + Math.sin(animFrame * 0.15) * 0.5;
+    ctx.fillStyle = `rgba(255,60,60,${alpha})`;
+    ctx.font = 'bold 14px Georgia';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText(`⚠ Incoming attack! (${incoming.length})`, 12, H - 20);
+  }
+
+  // ── Ресурсные острова мировой карты ───────────
+  function drawResourceIslands() {
+    if (worldResourceIslands.length === 0) return;
+    const W = canvas.width, H = canvas.height;
+    const now = Date.now();
+    resHitZones = [];
+
+    const TYPE_COLOR = { wood: '#5a9e50', gold: '#c8a020', rum: '#8b3a8b' };
+    const TYPE_ICON  = { wood: '🌲', gold: '💰', rum: '🍺' };
+
+    const zoom = viewZoom;
+    const halfVW = W / (2 * zoom);
+    const halfVH = H / (2 * zoom);
+    const margin = 80;
+
+    for (const isl of worldResourceIslands) {
+      // world-to-screen (camera is top-left of view)
+      const sx = isl.x - camera.x;
+      const sy = isl.y - camera.y;
+
+      // Frustum cull (same method as main island loop)
+      if (sx < W / 2 - halfVW - margin || sx > W / 2 + halfVW + margin ||
+          sy < H / 2 - halfVH - margin || sy > H / 2 + halfVH + margin) continue;
+
+      const r = isl.size;
+      const depleted = isl.depleted_until > now;
+      const raid = myResourceRaids.find(rr => rr.islandId === isl.id);
+
+      // Island body
+      ctx.save();
+      ctx.globalAlpha = depleted ? 0.4 : 0.9;
+
+      // Shadow
+      ctx.fillStyle = 'rgba(0,0,0,0.2)';
+      ctx.beginPath();
+      ctx.ellipse(sx + 3, sy + 4, r + 2, (r + 2) * 0.6, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Base island shape (sandy)
+      ctx.fillStyle = depleted ? '#888' : '#d4b86a';
+      ctx.beginPath();
+      ctx.ellipse(sx, sy, r, r * 0.65, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Type color accent
+      ctx.fillStyle = depleted ? '#666' : (TYPE_COLOR[isl.type] || '#888');
+      ctx.beginPath();
+      ctx.ellipse(sx, sy - 2, r * 0.55, r * 0.38, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Icon
+      ctx.globalAlpha = depleted ? 0.3 : 1;
+      ctx.font = `${Math.max(10, Math.round(r * 0.75))}px serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(depleted ? '💤' : (TYPE_ICON[isl.type] || '?'), sx, sy - 2);
+
+      // Depletion timer
+      if (depleted) {
+        const minsLeft = Math.ceil((isl.depleted_until - now) / 60000);
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = '#fff';
+        ctx.font = `bold ${Math.max(8, Math.round(r * 0.55))}px monospace`;
+        ctx.fillText(`${minsLeft}m`, sx, sy + r * 0.55);
+      }
+
+      // Progress arc if harvesting
+      if (raid && !depleted) {
+        const prog = Math.min(1, (now - raid.startTime) / raid.duration);
+        ctx.globalAlpha = 0.9;
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r + 5, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2);
+        ctx.stroke();
+        // "En route" hint
+        ctx.globalAlpha = 0.8;
+        ctx.fillStyle = '#fffbe6';
+        ctx.font = `${Math.max(8, Math.round(r * 0.5))}px sans-serif`;
+        ctx.fillText(t('res_island_busy_tip'), sx, sy + r + 10);
+      } else if (!depleted && !raid) {
+        // Tap hint dot
+        ctx.globalAlpha = 0.5 + 0.3 * Math.sin(animFrame * 0.06);
+        ctx.fillStyle = '#fff';
+        ctx.font = `${Math.max(7, Math.round(r * 0.45))}px sans-serif`;
+        ctx.fillText('tap', sx, sy + r + 8);
+      }
+
+      ctx.restore();
+
+      // Register hit zone
+      resHitZones.push({ id: isl.id, wx: isl.x, wy: isl.y, size: r + 8 });
+    }
+  }
+
+  // ── Лодки в рейд на ресурсные острова (world mode) ───
+  function drawResourceRaidBoats() {
+    const m = me();
+    if (!m || !myResourceRaids || myResourceRaids.length === 0) return;
+
+    const now = Date.now();
+    const myX = m.pos_x;
+    const myY = m.pos_y;
+    const boatColor = m.color || '#8b4513';
+
+    for (const raid of myResourceRaids) {
+      const isl = worldResourceIslands.find(w => w.id === raid.islandId);
+      if (!isl) continue;
+
+      const progress = Math.min(1, (now - raid.startTime) / raid.duration);
+      const boatX = myX + progress * (isl.x - myX);
+      const boatY = myY + progress * (isl.y - myY);
+
+      const sx = boatX - camera.x;
+      const sy = boatY - camera.y;
+      const stx = isl.x - camera.x;
+      const sty = isl.y - camera.y;
+      const mySx = myX - camera.x;
+      const mySy = myY - camera.y;
+
+      const margin = 80;
+      const halfVW = canvas.width / (2 * viewZoom);
+      const halfVH = canvas.height / (2 * viewZoom);
+      if (sx < -margin - halfVW && stx < -margin - halfVW) continue;
+      if (sx > canvas.width + margin + halfVW && stx > canvas.width + margin + halfVW) continue;
+      if (sy < -margin - halfVH && sty < -margin - halfVH) continue;
+      if (sy > canvas.height + margin + halfVH && sty > canvas.height + margin + halfVH) continue;
+
+      const angle = Math.atan2(isl.x - boatX, -(isl.y - boatY));
+
+      // Пунктирная линия маршрута (от моего острова до цели)
+      ctx.setLineDash([6, 8]);
+      ctx.strokeStyle = 'rgba(168, 192, 96, 0.35)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(mySx, mySy);
+      ctx.lineTo(stx, sty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Кильватерный след за кормой (против направления к острову)
+      const trailLen = 28;
+      const tailX = sx - Math.sin(angle) * trailLen;
+      const tailY = sy + Math.cos(angle) * trailLen;
+      const grad = ctx.createLinearGradient(sx, sy, tailX, tailY);
+      grad.addColorStop(0, 'rgba(255,255,255,0.25)');
+      grad.addColorStop(0.5, 'rgba(200,230,255,0.12)');
+      grad.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.strokeStyle = grad;
+      ctx.lineWidth = 4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(tailX, tailY);
+      ctx.stroke();
+
+      // Лодка (повёрнута по направлению к острову)
+      const bob = Math.sin(animFrame * 0.08 + raid.islandId) * 1.5;
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(angle);
+      drawBoat(0, 0, bob, boatColor, '#e8e4c9');
+      ctx.restore();
+    }
+  }
+
+  // ── PvP миссии (летящие лодки) ────────────────
+  function drawPvpMissions() {
+    for (const m of pvpMissions) {
+      const sx = m.x - camera.x;
+      const sy = m.y - camera.y;
+      const stx = m.tx - camera.x;
+      const sty = m.ty - camera.y;
+
+      // Frustum culling
+      if (sx < -20 && stx < -20) continue;
+      if (sx > canvas.width + 20 && stx > canvas.width + 20) continue;
+
+      const angle = Math.atan2(m.ty - m.y, m.tx - m.x);
+
+      // Пунктирная линия до цели
+      ctx.setLineDash([5, 7]);
+      ctx.strokeStyle = 'rgba(255,82,82,0.15)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(stx, sty);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Огненный след — длинный, двойной
+      const trailLen = 48;
+      const tailX = sx - Math.cos(angle) * trailLen;
+      const tailY = sy - Math.sin(angle) * trailLen;
+      // Внешний след (широкий, тёмно-красный)
+      const grad1 = ctx.createLinearGradient(sx, sy, tailX, tailY);
+      grad1.addColorStop(0, 'rgba(255,100,50,0.7)');
+      grad1.addColorStop(0.4, 'rgba(200,50,20,0.3)');
+      grad1.addColorStop(1, 'rgba(100,20,0,0)');
+      ctx.strokeStyle = grad1;
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(tailX, tailY);
+      ctx.stroke();
+      // Внутренний след (узкий, яркий)
+      const grad2 = ctx.createLinearGradient(sx, sy, tailX, tailY);
+      grad2.addColorStop(0, 'rgba(255,220,100,0.95)');
+      grad2.addColorStop(0.3, 'rgba(255,120,40,0.5)');
+      grad2.addColorStop(1, 'rgba(255,60,0,0)');
+      ctx.strokeStyle = grad2;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(tailX, tailY);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+
+      // Снаряд — острый треугольник-дротик, без покачивания
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(angle);
+      // Корпус — вытянутый ромб
+      ctx.fillStyle = m.ownerColor || '#cc3333';
+      ctx.beginPath();
+      ctx.moveTo(14, 0);    // нос
+      ctx.lineTo(2, -4);
+      ctx.lineTo(-8, 0);   // хвост
+      ctx.lineTo(2, 4);
+      ctx.closePath();
+      ctx.fill();
+      // Блик
+      ctx.fillStyle = 'rgba(255,255,200,0.6)';
+      ctx.beginPath();
+      ctx.moveTo(12, 0);
+      ctx.lineTo(4, -2);
+      ctx.lineTo(6, 0);
+      ctx.closePath();
+      ctx.fill();
+      ctx.restore();
+
+      // Ник атакующего
+      ctx.fillStyle = '#ff8a80';
+      ctx.font = 'bold 9px Georgia';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(m.owner, sx, sy - 16);
+    }
+  }
+
+  // ── Миникарта ─────────────────────────────────
+  function drawMinimap(W, H) {
+    const mw = minimapCanvas.width;
+    const mh = minimapCanvas.height;
+    const sx = mw / MAP_W;
+    const sy = mh / MAP_H;
+
+    mmCtx.fillStyle = 'rgba(8,16,32,0.9)';
+    mmCtx.fillRect(0, 0, mw, mh);
+
+    // Ресурсные острова
+    const now = Date.now();
+    for (const isl of worldResourceIslands) {
+      const depleted = isl.depleted_until > now;
+      mmCtx.fillStyle = depleted ? '#555' :
+        ({ wood: '#5a9e50', gold: '#c8a020', rum: '#8b3a8b' }[isl.type] || '#777');
+      mmCtx.beginPath();
+      mmCtx.arc(isl.x * sx, isl.y * sy, 1.5, 0, Math.PI * 2);
+      mmCtx.fill();
+    }
+
+    // PvP миссии
+    for (const m of pvpMissions) {
+      mmCtx.fillStyle = '#ff5252';
+      mmCtx.fillRect(m.x * sx - 1.5, m.y * sy - 1.5, 3, 3);
+    }
+
+    // Все острова
+    for (const p of playersArr) {
+      if (p.pos_x === undefined) continue;
+      const isMe = p.nick === myNick;
+      mmCtx.fillStyle = isMe ? '#ffd700' : (p.online ? p.color : '#444');
+      mmCtx.beginPath();
+      mmCtx.arc(p.pos_x * sx, p.pos_y * sy, isMe ? 3 : 2, 0, Math.PI * 2);
+      mmCtx.fill();
+      if (isMe) {
+        mmCtx.strokeStyle = '#ffd700';
+        mmCtx.lineWidth = 1;
+        mmCtx.stroke();
+      }
+    }
+
+    // Viewport rect
+    mmCtx.strokeStyle = 'rgba(255,215,0,0.5)';
+    mmCtx.lineWidth = 1;
+    mmCtx.strokeRect(
+      camera.x * sx,
+      camera.y * sy,
+      W * sx,
+      H * sy
+    );
+  }
+
+  // ── Клик по миникарте — перемещение камеры ───
+  minimapCanvas.addEventListener('click', (e) => {
+    const rect = minimapCanvas.getBoundingClientRect();
+    const mx = (e.clientX - rect.left) / minimapCanvas.width;
+    const my = (e.clientY - rect.top) / minimapCanvas.height;
+    camera.x = mx * MAP_W - canvas.width / 2;
+    camera.y = my * MAP_H - canvas.height / 2;
+  });
 
   // ── Start ─────────────────────────────────────
   console.log('[CLIENT] PirateIsles client loaded');

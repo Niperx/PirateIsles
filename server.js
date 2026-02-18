@@ -54,8 +54,8 @@ const BASE_BOAT_CAPACITY = 2;       // Начальная вместимость
 const BOATS_PER_DOCK_LVL = 1;       // +1 лодка за уровень дока
 
 // Рейды (AI-лодки)
-const RAID_MIN_TIME = 8 * 60 * 1000;   // 8 мин
-const RAID_MAX_TIME = 20 * 60 * 1000;  // 20 мин
+const RAID_MIN_TIME = 1 * 60 * 1000;   // 1 мин (тест; боевое: 8 мин)
+const RAID_MAX_TIME = 1 * 60 * 1000;   // 1 мин (тест; боевое: 20 мин)
 const RAID_LOOT_MIN = 150;
 const RAID_LOOT_MAX = 1200;
 const BOAT_LOSS_CHANCE = 0.12;          // 12% базовый шанс потери
@@ -85,9 +85,42 @@ const LEGACY_BONUS_PER_DESTROY = 0.01;  // +1% дохода
 const NICK_MIN = 3;
 const NICK_MAX = 16;
 
+// World map
+const MAP_W = 3000;
+const MAP_H = 2000;
+const PVP_SPEED = 250;          // world-units/sec для летящей лодки
+const PVP_MISSION_TICK = 100;   // ms — тик движения PvP-лодок
+
+// Архипелаг (острова-спутники у базы)
+const ARCHI_WOOD_PER_SEC   = 0.4;            // дерево/сек пассивно с каждого островка
+const ARCHI_HARVEST_MIN    = 15 * 1000;       // 15 сек (тест; боевое: ~10 мин)
+const ARCHI_HARVEST_MAX    = 15 * 1000;       // 15 сек (тест; боевое: ~20 мин)
+const ARCHI_DEPLETION      = 15 * 60 * 1000; // 15 мин до восстановления острова
+const ARCHI_LOSS_CHANCE    = 0.05;           // 5% шанс потери лодки
+// Лут по типу: [min, max]
+const ARCHI_LOOT = {
+  wood:  { resource: 'wood',  min: 60,  max: 180 },
+  stone: { resource: 'gold',  min: 30,  max: 100 },
+  rum:   { resource: 'rum',   min: 80,  max: 250 },
+};
+
 // ── In-memory хранилище ──────────────────────────────────
+// Острова ресурсов на мировой карте
+const RESOURCE_ISLAND_COUNT = 20;
+const RESOURCE_HARVEST_MIN  = 30 * 1000;       // 30 сек (тест; боевое: ~5 мин)
+const RESOURCE_HARVEST_MAX  = 60 * 1000;       // 60 сек (тест; боевое: ~15 мин)
+const RESOURCE_DEPLETION    = 2 * 60 * 1000;  // 2 мин (тест; боевое: ~30 мин)
+const RESOURCE_LOSS_CHANCE  = 0.08;
+const RESOURCE_LOOT = {
+  wood: { resource: 'wood', min: 100, max: 300 },
+  gold: { resource: 'gold', min:  80, max: 200 },
+  rum:  { resource: 'rum',  min: 150, max: 400 },
+};
+
 const players = {};       // ключ — nick
 const activeRaids = [];   // { playerId, startTime, duration, lootRoll }
+const pvpMissions = [];   // { id, owner, targetNick, x, y, tx, ty, speed, ownerColor }
+const resourceIslands = []; // { id, x, y, type, size, depleted_until }
 
 // ── Утилиты ──────────────────────────────────────────────
 function randInt(min, max) {
@@ -96,6 +129,45 @@ function randInt(min, max) {
 
 function hashPassword(pw) {
   return crypto.createHash('sha256').update(pw).digest('hex');
+}
+
+// Детерминированный сид по нику (зеркало клиентской функции)
+function archSeed(nick, i) {
+  let h = 0;
+  for (let j = 0; j < nick.length; j++) h = (h * 31 + nick.charCodeAt(j)) & 0xffffffff;
+  return Math.abs((h ^ (i * 2654435761)) >>> 0);
+}
+function getArchipelagoCount(nick) {
+  return 2 + (archSeed(nick, 0) % 3); // 2–4 островка
+}
+
+function generateResourceIslands() {
+  const cols = 5, rows = 4;
+  const cellW = MAP_W / cols;
+  const cellH = MAP_H / rows;
+  const types = ['wood', 'wood', 'gold', 'rum'];
+  let id = 0;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const x = Math.round(cellW * c + cellW * 0.15 + Math.random() * cellW * 0.7);
+      const y = Math.round(cellH * r + cellH * 0.15 + Math.random() * cellH * 0.7);
+      resourceIslands.push({
+        id: id++, x, y,
+        type: types[Math.floor(Math.random() * types.length)],
+        size: 18 + Math.round(Math.random() * 14),
+        depleted_until: 0
+      });
+    }
+  }
+  console.log(`[WORLD] Generated ${resourceIslands.length} resource islands`);
+}
+
+function getResourceIslandsPublic() {
+  return resourceIslands.map(i => ({
+    id: i.id, x: i.x, y: i.y,
+    type: i.type, size: i.size,
+    depleted_until: i.depleted_until
+  }));
 }
 
 function boatCapacity(dockLevel) {
@@ -238,14 +310,16 @@ async function loadPlayersFromRedis() {
         nick: base.nick,
         password_hash: base.password_hash || null,
         island_level: parseInt(base.island_level) || 1,
-        pos_x: parseFloat(base.pos_x) || Math.random() * 1000,
-        pos_y: parseFloat(base.pos_y) || Math.random() * 1000,
+        pos_x: parseFloat(base.pos_x) || randInt(300, MAP_W - 300),
+        pos_y: parseFloat(base.pos_y) || randInt(300, MAP_H - 300),
         last_active: parseInt(base.last_active) || Date.now(),
         online: false,
         tavern_level: parseInt(base.tavern_level) || 1,
         dock_level: parseInt(base.dock_level) || 1,
         cannon_level: parseInt(base.cannon_level) || 0,
-        boats: parseInt(base.boats) || BASE_BOAT_CAPACITY,
+        // boats восстанавливаем до максимума: activeRaids/archi_raids хранятся
+        // только в памяти и сбрасываются при рестарте — лодки «возвращаются» автоматически
+        boats: boatCapacity(parseInt(base.dock_level) || 1),
         shield_until: parseInt(base.shield_until) || 0,
         created_at: parseInt(base.created_at) || Date.now(),
         color: base.color || `hsl(${randInt(0, 360)}, 60%, 50%)`,
@@ -274,8 +348,8 @@ function createPlayer(nick, passwordHash = null) {
     nick,
     password_hash: passwordHash,
     island_level: 1,
-    pos_x: Math.random() * 1000,
-    pos_y: Math.random() * 1000,
+    pos_x: randInt(300, MAP_W - 300),
+    pos_y: randInt(300, MAP_H - 300),
     last_active: Date.now(),
     online: true,
     rum: 0,
@@ -292,6 +366,9 @@ function createPlayer(nick, passwordHash = null) {
     debris_ttl: 0,
     raid_cooldown: 0,
     pvp_cooldown: 0,
+    archi_raids: [],     // [{idx, startTime, duration, type}]
+    archi_depleted: {},  // {idx: timestamp_until_replenished}
+    resource_raids: [],  // [{islandId, startTime, duration}]
     created_at: Date.now(),
     color: `hsl(${randInt(0, 360)}, 60%, 50%)`
   };
@@ -312,17 +389,20 @@ function calculateOfflineProgress(player) {
   const offlineRum = Math.floor(onlineRum * OFFLINE_RATE);
 
   const rum = Math.floor(seconds * offlineRum);
-  // Gold и wood не имеют пассивного дохода в MVP
-  return { rum, gold: 0, wood: 0, seconds: Math.floor(seconds) };
+  const wood = Math.floor(seconds * ARCHI_WOOD_PER_SEC * getArchipelagoCount(player.nick) * OFFLINE_RATE);
+  return { rum, gold: 0, wood, seconds: Math.floor(seconds) };
 }
 
 // ── Публичное состояние ──────────────────────────────────
 function getPlayerPublic(id) {
   const p = players[id];
   if (!p) return null;
+  const myRaidsCount = activeRaids.filter(r => r.playerId === id).length;
   return {
     nick: p.nick,
     island_level: p.island_level,
+    pos_x: p.pos_x,
+    pos_y: p.pos_y,
     rum: Math.floor(p.rum),
     gold: Math.floor(p.gold),
     wood: Math.floor(p.wood),
@@ -337,8 +417,29 @@ function getPlayerPublic(id) {
     debris_gold: Math.floor(p.debris_gold),
     online: p.online,
     color: p.color,
-    pvp_cooldown: p.pvp_cooldown
+    pvp_cooldown: p.pvp_cooldown,
+    active_raids: myRaidsCount,
+    archi_raids: (p.archi_raids || []).map(r => ({
+      idx: r.idx, startTime: r.startTime, duration: r.duration, type: r.type
+    })),
+    archi_depleted: p.archi_depleted || {},
+    resource_raids: (p.resource_raids || []).map(r => ({
+      islandId: r.islandId, startTime: r.startTime, duration: r.duration
+    }))
   };
+}
+
+function getPvpMissionsPublic() {
+  return pvpMissions.map(m => ({
+    id: m.id,
+    owner: m.owner,
+    targetNick: m.targetNick,
+    x: Math.round(m.x),
+    y: Math.round(m.y),
+    tx: Math.round(m.tx),
+    ty: Math.round(m.ty),
+    ownerColor: m.ownerColor
+  }));
 }
 
 function getStatePayload() {
@@ -346,7 +447,90 @@ function getStatePayload() {
   for (const id in players) {
     list.push(getPlayerPublic(id));
   }
-  return { players: list, timestamp: Date.now() };
+  return { players: list, pvpMissions: getPvpMissionsPublic(), resourceIslands: getResourceIslandsPublic(), timestamp: Date.now() };
+}
+
+// ── Resolve PvP mission по прилёту ───────────────────────
+function resolvePvpAttack(m) {
+  const attacker = players[m.owner];
+  const target = players[m.targetNick];
+
+  // Возврат лодки атакующему
+  if (attacker) {
+    attacker.boats = Math.min(attacker.boats + 1, boatCapacity(attacker.dock_level));
+  }
+
+  if (!target) {
+    if (attacker) io.to(m.owner).emit('attackResult', { ok: false, msg: 'Target not found' });
+    return;
+  }
+
+  // Если цель получила щит пока лодка летела
+  if (target.shield_until > Date.now()) {
+    if (attacker) io.to(m.owner).emit('attackResult', { ok: false, msg: 'Target is shielded' });
+    return;
+  }
+
+  const attackPower = (attacker ? attacker.boats * 10 + attacker.island_level * 5 : 10);
+  const defensePower = target.cannon_level * 15 + target.island_level * 3;
+  const defenseReduction = Math.min(0.5, defensePower / (attackPower + defensePower + 1));
+  const stealPercent = PVP_STEAL_MIN + Math.random() * (PVP_STEAL_MAX - PVP_STEAL_MIN);
+  const effectiveSteal = stealPercent * (1 - defenseReduction);
+
+  const stolenRum  = Math.floor(target.rum  * effectiveSteal);
+  const stolenGold = Math.floor(target.gold * effectiveSteal);
+  const stolenWood = Math.floor(target.wood * effectiveSteal);
+  const totalStolen = stolenRum + stolenGold + stolenWood;
+
+  const debrisTotal    = Math.floor(totalStolen * DEBRIS_RATIO);
+  const attackerDebris = Math.floor(debrisTotal * DEBRIS_ATTACKER_SHARE);
+  const defenderDebris = Math.floor(debrisTotal * DEBRIS_DEFENDER_SHARE);
+
+  if (attacker) {
+    const safe = (totalStolen || 1);
+    attacker.rum  += stolenRum  - Math.floor(stolenRum  * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenRum  / safe));
+    attacker.gold += stolenGold - Math.floor(stolenGold * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenGold / safe));
+    attacker.wood += stolenWood - Math.floor(stolenWood * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenWood / safe));
+    persist(m.owner);
+    io.to(m.owner).emit('attackResult', {
+      ok: true,
+      target: m.targetNick,
+      stolen: { rum: stolenRum, gold: stolenGold, wood: stolenWood },
+      totalStolen,
+      debris: debrisTotal
+    });
+  }
+
+  target.rum  = Math.max(0, target.rum  - stolenRum);
+  target.gold = Math.max(0, target.gold - stolenGold);
+  target.wood = Math.max(0, target.wood - stolenWood);
+  target.debris_gold += defenderDebris;
+  target.debris_ttl = Date.now() + 24 * 3600 * 1000;
+
+  const shieldHours = SHIELD_MIN_HOURS + Math.random() * (SHIELD_MAX_HOURS - SHIELD_MIN_HOURS);
+  target.shield_until = Date.now() + Math.floor(shieldHours * 3600 * 1000);
+  target.destruction_state = Math.min(2, target.destruction_state + 1);
+
+  if (target.destruction_state >= 2) {
+    target.legacy_bonus += LEGACY_BONUS_PER_DESTROY * target.island_level;
+  }
+
+  persist(m.targetNick);
+
+  io.to(m.targetNick).emit('attacked', {
+    by: m.owner,
+    lost: { rum: stolenRum, gold: stolenGold, wood: stolenWood },
+    shieldUntil: target.shield_until,
+    destructionState: target.destruction_state,
+    debrisGold: defenderDebris
+  });
+
+  io.emit('chat', {
+    from: 'PvP',
+    text: `${m.owner} raided ${m.targetNick}! Stole ${totalStolen} resources`
+  });
+
+  console.log(`[PVP] Mission resolved: ${m.owner} → ${m.targetNick}, stole ${totalStolen}`);
 }
 
 // ── Economy tick (1 сек) ─────────────────────────────────
@@ -357,6 +541,8 @@ setInterval(() => {
 
     // Пассивный доход рома
     p.rum += rumRate(p);
+    // Пассивный доход дерева от архипелага
+    p.wood += ARCHI_WOOD_PER_SEC * getArchipelagoCount(p.nick);
     p.last_active = Date.now();
 
     // Авто-ремонт (destruction_state > 0)
@@ -437,7 +623,106 @@ setInterval(() => {
     activeRaids.splice(i, 1);
     persist(raid.playerId);
   }
+
+  // ── Проверка archi-рейдов ──────────────────────────────
+  const now2 = Date.now();
+  for (const id in players) {
+    const p = players[id];
+    if (!p.archi_raids || p.archi_raids.length === 0) continue;
+    for (let i = p.archi_raids.length - 1; i >= 0; i--) {
+      const ar = p.archi_raids[i];
+      if (now2 < ar.startTime + ar.duration) continue;
+
+      // Завершился
+      const lootDef = ARCHI_LOOT[ar.type] || ARCHI_LOOT.wood;
+      const lootAmt = Math.floor(lootDef.min + Math.random() * (lootDef.max - lootDef.min));
+      const boatLost = Math.random() < ARCHI_LOSS_CHANCE;
+
+      if (!boatLost) {
+        p.boats = Math.min(p.boats + 1, boatCapacity(p.dock_level));
+      }
+      p[lootDef.resource] = (p[lootDef.resource] || 0) + lootAmt;
+
+      // Деплеция острова
+      if (!p.archi_depleted) p.archi_depleted = {};
+      p.archi_depleted[ar.idx] = now2 + ARCHI_DEPLETION;
+
+      p.archi_raids.splice(i, 1);
+
+      console.log(`[ARCHI] ${id}: island ${ar.idx} (${ar.type}) → +${lootAmt} ${lootDef.resource}, boatLost=${boatLost}`);
+      io.to(id).emit('archiResult', {
+        idx: ar.idx,
+        type: ar.type,
+        resource: lootDef.resource,
+        amount: lootAmt,
+        boatLost,
+        depletedUntil: p.archi_depleted[ar.idx]
+      });
+
+      persist(id);
+    }
+  }
+
+  // ── Проверка resource-рейдов ───────────────────────────
+  const now3 = Date.now();
+  for (const id in players) {
+    const p = players[id];
+    if (!p.resource_raids || p.resource_raids.length === 0) continue;
+    for (let i = p.resource_raids.length - 1; i >= 0; i--) {
+      const rr = p.resource_raids[i];
+      if (now3 < rr.startTime + rr.duration) continue;
+
+      const island = resourceIslands.find(isl => isl.id === rr.islandId);
+      if (!island) { p.resource_raids.splice(i, 1); continue; }
+
+      const lootDef = RESOURCE_LOOT[island.type] || RESOURCE_LOOT.wood;
+      const lootAmt = Math.floor(lootDef.min + Math.random() * (lootDef.max - lootDef.min));
+      const boatLost = Math.random() < RESOURCE_LOSS_CHANCE;
+
+      if (!boatLost) {
+        p.boats = Math.min(p.boats + 1, boatCapacity(p.dock_level));
+      }
+      p[lootDef.resource] = (p[lootDef.resource] || 0) + lootAmt;
+
+      // Деплеция острова (общая для всех игроков)
+      island.depleted_until = now3 + RESOURCE_DEPLETION;
+
+      p.resource_raids.splice(i, 1);
+
+      console.log(`[RES] ${id}: island ${island.id} (${island.type}) → +${lootAmt} ${lootDef.resource}, boatLost=${boatLost}`);
+      io.to(id).emit('resourceRaidResult', {
+        islandId: island.id,
+        type: island.type,
+        resource: lootDef.resource,
+        amount: lootAmt,
+        boatLost,
+        depletedUntil: island.depleted_until
+      });
+
+      persist(id);
+    }
+  }
 }, RAID_CHECK_TICK);
+
+// ── PvP missions tick (100 мс) ───────────────────────────
+setInterval(() => {
+  if (pvpMissions.length === 0) return;
+  const dt = PVP_MISSION_TICK / 1000;
+  for (let i = pvpMissions.length - 1; i >= 0; i--) {
+    const m = pvpMissions[i];
+    const dx = m.tx - m.x;
+    const dy = m.ty - m.y;
+    const d = Math.sqrt(dx * dx + dy * dy);
+    if (d < m.speed * dt + 10) {
+      resolvePvpAttack(m);
+      pvpMissions.splice(i, 1);
+    } else {
+      m.x += (dx / d) * m.speed * dt;
+      m.y += (dy / d) * m.speed * dt;
+    }
+  }
+  io.emit('pvpMissions', getPvpMissionsPublic());
+}, PVP_MISSION_TICK);
 
 // ── State broadcast (2 сек) ──────────────────────────────
 setInterval(() => {
@@ -646,7 +931,84 @@ io.on('connection', (socket) => {
     });
   });
 
-  // ── PvP атака ──────────────────────────────────────────
+  // ── Сбор ресурсов с острова архипелага ────────────────
+  socket.on('harvestArchi', (data, callback) => {
+    if (typeof callback !== 'function') return;
+    if (!currentNick || !players[currentNick]) return callback({ ok: false, msg: 'Not logged in' });
+    const p = players[currentNick];
+
+    const idx = parseInt(data?.idx);
+    if (isNaN(idx) || idx < 0 || idx >= getArchipelagoCount(currentNick)) {
+      return callback({ ok: false, msg: 'Invalid island index' });
+    }
+
+    // Проверка: остров не в деплеции
+    const depletedUntil = (p.archi_depleted || {})[idx] || 0;
+    if (depletedUntil > Date.now()) {
+      const secsLeft = Math.ceil((depletedUntil - Date.now()) / 1000);
+      return callback({ ok: false, msg: `Island depleted (${secsLeft}s)` });
+    }
+
+    // Проверка: остров уже не собирается
+    if (!p.archi_raids) p.archi_raids = [];
+    if (p.archi_raids.some(r => r.idx === idx)) {
+      return callback({ ok: false, msg: 'Already harvesting this island' });
+    }
+
+    // Нужна лодка
+    if (p.boats <= 0) {
+      return callback({ ok: false, msg: 'No boats available' });
+    }
+
+    // Определяем тип острова (зеркало клиента)
+    const ARCHI_TYPES_SRV = ['wood', 'wood', 'stone', 'rum'];
+    const s3 = archSeed(currentNick, idx * 3 + 3);
+    const type = ARCHI_TYPES_SRV[s3 % ARCHI_TYPES_SRV.length];
+
+    p.boats -= 1;
+    const duration = Math.floor(ARCHI_HARVEST_MIN + Math.random() * (ARCHI_HARVEST_MAX - ARCHI_HARVEST_MIN));
+    p.archi_raids.push({ idx, startTime: Date.now(), duration, type });
+
+    console.log(`[ARCHI] ${currentNick}: harvesting island ${idx} (${type}), eta=${Math.round(duration/1000)}s`);
+    callback({ ok: true, duration, idx, type });
+  });
+
+  // ── Сбор ресурсов с острова мировой карты ─────────────
+  socket.on('harvestResourceIsland', (data, callback) => {
+    if (typeof callback !== 'function') return;
+    if (!currentNick || !players[currentNick]) return callback({ ok: false, msg: 'Not logged in' });
+    const p = players[currentNick];
+
+    const islandId = parseInt(data?.islandId);
+    const island = resourceIslands.find(i => i.id === islandId);
+    if (!island) return callback({ ok: false, msg: 'Island not found' });
+
+    // Проверка: остров не в деплеции
+    if (island.depleted_until > Date.now()) {
+      const secsLeft = Math.ceil((island.depleted_until - Date.now()) / 1000);
+      return callback({ ok: false, msg: `Island depleted (${secsLeft}s)` });
+    }
+
+    // Проверка: игрок уже не отправил лодку на этот остров
+    if (!p.resource_raids) p.resource_raids = [];
+    if (p.resource_raids.some(r => r.islandId === islandId)) {
+      return callback({ ok: false, msg: 'Already harvesting this island' });
+    }
+
+    // Нужна лодка
+    if (p.boats <= 0) {
+      return callback({ ok: false, msg: 'No boats available' });
+    }
+
+    p.boats -= 1;
+    const duration = Math.floor(RESOURCE_HARVEST_MIN + Math.random() * (RESOURCE_HARVEST_MAX - RESOURCE_HARVEST_MIN));
+    p.resource_raids.push({ islandId, startTime: Date.now(), duration });
+
+    console.log(`[RES] ${currentNick}: harvesting island ${islandId} (${island.type}), eta=${Math.round(duration/1000)}s`);
+    callback({ ok: true, duration, islandId, type: island.type });
+  });
+
+  // ── PvP атака — создаёт летящую миссию ────────────────
   socket.on('attackPlayer', (data, callback) => {
     if (typeof callback !== 'function') return;
     if (!currentNick || !players[currentNick]) return callback({ ok: false, msg: 'Not logged in' });
@@ -658,7 +1020,7 @@ io.on('connection', (socket) => {
     if (!target) return callback({ ok: false, msg: 'Player not found' });
     if (targetNick === currentNick) return callback({ ok: false, msg: 'Cannot attack yourself' });
 
-    // Щит
+    // Щит — проверяем на старте
     if (target.shield_until > Date.now()) {
       const remainH = Math.ceil((target.shield_until - Date.now()) / 3600000);
       return callback({ ok: false, msg: `Target is shielded (${remainH}h left)` });
@@ -670,90 +1032,44 @@ io.on('connection', (socket) => {
       return callback({ ok: false, msg: `PvP cooldown: ${remainM} min` });
     }
 
-    // Нужна хотя бы 1 лодка для атаки
+    // Нужна хотя бы 1 лодка
     if (attacker.boats <= 0) {
       return callback({ ok: false, msg: 'Need at least 1 boat to attack' });
     }
 
-    // Сила атаки и обороны
-    const attackPower = attacker.boats * 10 + attacker.island_level * 5;
-    const defensePower = target.cannon_level * 15 + target.island_level * 3;
+    // Запускаем летящую миссию
+    const dx = target.pos_x - attacker.pos_x;
+    const dy = target.pos_y - attacker.pos_y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const eta = Math.ceil(dist / PVP_SPEED);
 
-    // Оборона снижает % кражи
-    const defenseReduction = Math.min(0.5, defensePower / (attackPower + defensePower + 1));
-    const stealPercent = PVP_STEAL_MIN + Math.random() * (PVP_STEAL_MAX - PVP_STEAL_MIN);
-    const effectiveSteal = stealPercent * (1 - defenseReduction);
+    const missionId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+    pvpMissions.push({
+      id: missionId,
+      owner: currentNick,
+      targetNick,
+      x: attacker.pos_x,
+      y: attacker.pos_y,
+      tx: target.pos_x,
+      ty: target.pos_y,
+      speed: PVP_SPEED,
+      ownerColor: attacker.color
+    });
 
-    const stolenRum = Math.floor(target.rum * effectiveSteal);
-    const stolenGold = Math.floor(target.gold * effectiveSteal);
-    const stolenWood = Math.floor(target.wood * effectiveSteal);
-    const totalStolen = stolenRum + stolenGold + stolenWood;
-
-    // Debris
-    const debrisTotal = Math.floor(totalStolen * DEBRIS_RATIO);
-    const attackerDebris = Math.floor(debrisTotal * DEBRIS_ATTACKER_SHARE);
-    const defenderDebris = Math.floor(debrisTotal * DEBRIS_DEFENDER_SHARE);
-
-    // Атакующий получает ресурсы минус debris
-    attacker.rum += stolenRum - Math.floor(stolenRum * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenRum / (totalStolen || 1)));
-    attacker.gold += stolenGold - Math.floor(stolenGold * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenGold / (totalStolen || 1)));
-    attacker.wood += stolenWood - Math.floor(stolenWood * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenWood / (totalStolen || 1)));
-
-    // Отнимаем у защитника
-    target.rum -= stolenRum;
-    target.gold -= stolenGold;
-    target.wood -= stolenWood;
-
-    // Debris для защитника (пассивно отдаётся через economy tick)
-    target.debris_gold += defenderDebris;
-    target.debris_ttl = Date.now() + 24 * 3600 * 1000; // 24h TTL
-
-    // Авто-щит
-    const shieldHours = SHIELD_MIN_HOURS + Math.random() * (SHIELD_MAX_HOURS - SHIELD_MIN_HOURS);
-    target.shield_until = Date.now() + Math.floor(shieldHours * 3600 * 1000);
-
-    // Destruction state
-    target.destruction_state = Math.min(2, target.destruction_state + 1);
-
-    // Legacy bonus при полном разрушении
-    if (target.destruction_state >= 2) {
-      target.legacy_bonus += LEGACY_BONUS_PER_DESTROY * target.island_level;
-      console.log(`[PVP] ${targetNick} fully destroyed! Legacy bonus now: ${target.legacy_bonus}`);
-      // TODO: Reset или penalty для разрушенного острова
-    }
-
-    // Кулдаун атакующего
-    attacker.pvp_cooldown = Date.now() + PVP_COOLDOWN;
-
-    // Потеря лодки у атакующего (1 лодка на атаку)
+    // Расходуем лодку и ставим кулдаун сразу
     attacker.boats = Math.max(0, attacker.boats - 1);
-
+    attacker.pvp_cooldown = Date.now() + PVP_COOLDOWN;
     persist(currentNick);
-    persist(targetNick);
 
-    console.log(`[PVP] ${currentNick} attacked ${targetNick}: stole rum=${stolenRum}, gold=${stolenGold}, wood=${stolenWood}`);
+    console.log(`[PVP] ${currentNick} → ${targetNick}: mission launched (dist=${Math.round(dist)}, ETA=${eta}s)`);
 
-    callback({
-      ok: true,
-      stolen: { rum: stolenRum, gold: stolenGold, wood: stolenWood },
-      totalStolen,
-      debris: debrisTotal
-    });
+    callback({ ok: true, launched: true, eta, targetNick });
 
-    // Уведомление защитнику
-    io.to(targetNick).emit('attacked', {
-      by: currentNick,
-      lost: { rum: stolenRum, gold: stolenGold, wood: stolenWood },
-      shieldUntil: target.shield_until,
-      destructionState: target.destruction_state,
-      debrisGold: defenderDebris
-    });
-
-    // Глобальный чат
     io.emit('chat', {
       from: 'PvP',
-      text: `${currentNick} raided ${targetNick}! Stole ${totalStolen} resources`
+      text: `${currentNick} launched attack on ${targetNick}! (ETA ~${eta}s)`
     });
+    io.emit('state', getStatePayload());
   });
 
   // ── Сбор debris ────────────────────────────────────────
@@ -794,6 +1110,8 @@ async function start() {
   } catch (e) {
     console.warn('[SYSTEM] Redis load failed, starting empty:', e.message);
   }
+
+  generateResourceIslands();
 
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, '0.0.0.0', () => {
