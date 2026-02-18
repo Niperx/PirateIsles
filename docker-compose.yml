@@ -12,6 +12,7 @@ services:
     volumes:
       - ./server.js:/app/server.js
       - ./index.html:/app/index.html
+      - ./assets:/app/assets
 
   redis:
     image: redis:7-alpine
