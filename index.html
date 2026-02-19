@@ -508,7 +508,15 @@
     </div>
     <div style="margin-top:8px; color:#7a6f5a; font-size:10px;">
       <span data-i18n="rum_per_sec">Rum/sec</span>: <span id="u-rum-rate" style="color:#e06050">2</span>
-      | Legacy: <span id="u-legacy" style="color:#ffd700">+0%</span>
+      | <span data-i18n="legacy_short">Legacy</span>: <span id="u-legacy" style="color:#ffd700">+0%</span>
+    </div>
+    <div class="legacy-panel" id="legacy-panel" style="margin-top:6px; padding:6px; background:rgba(0,0,0,0.2); border-radius:4px; font-size:10px; color:#b8a878;">
+      <div data-i18n="legacy_title">Legacy (passives)</div>
+      <div id="legacy-stats">Rum +0% · Raids +0% · PvP steal +0% · Wipe +0%</div>
+    </div>
+    <div class="upgrade-row" id="buy-shield-row" style="margin-top:6px; display:none;">
+      <div class="u-info"><span data-i18n="buy_shield_tip">Shield 1h (10% resources, 6h cooldown)</span></div>
+      <button class="upgrade-btn" id="btn-buy-shield" data-i18n="buy_shield_btn">Buy shield</button>
     </div>
     <div class="upgrade-row" id="debris-row" style="display:none; margin-top:8px;">
       <div class="u-info">
@@ -698,6 +706,14 @@
       world_locked: 'Unlocks at Island Level {0}',
       debris_collect_btn: 'Collect',
       debris_collected: 'Collected {0} gold!',
+      legacy_short: 'Legacy',
+      legacy_title: 'Legacy (passives)',
+      target_wiped: 'Target island wiped!',
+      you_wiped: 'You were wiped! +{0}% legacy bonus — start again.',
+      island_level_dropped: 'Island -{0} lvl',
+      newbie_shield: 'Newbie',
+      buy_shield_btn: 'Buy shield',
+      buy_shield_tip: 'Shield 1h (10% resources, 6h cooldown)',
     },
     ru: {
       subtitle: 'Idle PvPvE пиратская стратегия',
@@ -768,6 +784,14 @@
       world_locked: 'Открывается на уровне острова {0}',
       debris_collect_btn: 'Собрать',
       debris_collected: 'Собрано {0} золота!',
+      legacy_short: 'Наследие',
+      legacy_title: 'Наследие (пассивки)',
+      target_wiped: 'Остров цели уничтожен!',
+      you_wiped: 'Вас уничтожили! +{0}% к наследию — начните заново.',
+      island_level_dropped: 'Остров -{0} ур.',
+      newbie_shield: 'Новичок',
+      buy_shield_btn: 'Купить щит',
+      buy_shield_tip: 'Щит 1 ч (10% ресурсов, кулдаун 6 ч)',
     }
   };
 
@@ -838,6 +862,7 @@
   const uIslandCostWood = document.getElementById('u-island-cost-wood');
   const uRumRate = document.getElementById('u-rum-rate');
   const uLegacy = document.getElementById('u-legacy');
+  const legacyStatsEl = document.getElementById('legacy-stats');
 
   const btnUpTavern = document.getElementById('btn-up-tavern');
   const btnUpDock = document.getElementById('btn-up-dock');
@@ -847,6 +872,8 @@
   const debrisRow = document.getElementById('debris-row');
   const debrisGoldVal = document.getElementById('debris-gold-val');
   const btnCollectDebris = document.getElementById('btn-collect-debris');
+  const buyShieldRow = document.getElementById('buy-shield-row');
+  const btnBuyShield = document.getElementById('btn-buy-shield');
 
   const raidList = document.getElementById('raid-list');
   const playerList = document.getElementById('player-list');
@@ -1223,6 +1250,8 @@
       const s = data.stolen;
       playCoin();
       showToast(t('attack_hit', data.target, s.rum, s.gold, s.wood), 'good');
+      if (data.levelDropped) showToast(t('island_level_dropped', data.levelDropped), 'info');
+      if (data.targetWiped) showToast(t('target_wiped'), 'info');
     } else {
       showToast(data.msg || t('attack_shielded'), 'bad');
     }
@@ -1245,6 +1274,12 @@
 
   socket.on('attacked', (data) => {
     showToast(t('attacked_by', data.by, data.lost.rum, data.lost.gold, data.lost.wood), 'bad');
+    if (data.levelDropped) showToast(t('island_level_dropped', data.levelDropped), 'info');
+  });
+
+  socket.on('wiped', (data) => {
+    showToast(data.msg || t('you_wiped', (data.wipe_boost_gained || 0).toFixed(0)), 'info');
+    if (data.passives) updateHUD();
   });
 
   socket.on('chat', (data) => {
@@ -1277,7 +1312,10 @@
     hudWood.textContent = formatNum(m.wood);
     hudBoats.textContent = `${m.boats}/${m.boats_max}`;
 
-    if (m.shield_until > Date.now()) {
+    if (m.is_newbie_shield) {
+      hudShield.textContent = t('newbie_shield');
+      hudShield.style.display = '';
+    } else if (m.shield_until > Date.now()) {
       const remainH = Math.ceil((m.shield_until - Date.now()) / 3600000);
       hudShield.textContent = t('shield_h', remainH);
       hudShield.style.display = '';
@@ -1297,9 +1335,20 @@
     uIslandCostWood.textContent = formatNum(Math.floor(500 * Math.pow(2, m.island_level - 1)));
 
     const rate = BASE_RUM + (m.tavern_level - 1) * RUM_PER_TAV;
-    const legacyMult = 1 + m.legacy_bonus;
-    uRumRate.textContent = Math.floor(rate * legacyMult);
-    uLegacy.textContent = `+${(m.legacy_bonus * 100).toFixed(0)}%`;
+    const passives = m.passives || {};
+    const passiveRum = (passives.rum_bonus || 0) + (passives.wipe_boost || 0);
+    const legacyMult = 1 + (m.legacy_bonus || 0);
+    const totalMult = (1 + passiveRum / 100) * legacyMult;
+    uRumRate.textContent = Math.floor(rate * totalMult);
+    uLegacy.textContent = `+${(passiveRum + (m.legacy_bonus || 0) * 100).toFixed(0)}%`;
+    if (legacyStatsEl) {
+      legacyStatsEl.textContent = [
+        `Rum +${(passives.rum_bonus || 0).toFixed(1)}%`,
+        `Raids +${(passives.raid_speed || 0).toFixed(0)}%`,
+        `PvP +${(passives.pvp_steal || 0).toFixed(0)}%`,
+        `Wipe +${(passives.wipe_boost || 0).toFixed(0)}%`
+      ].join(' · ');
+    }
 
     btnUpTavern.disabled = m.rum < Math.floor(TAVERN_BASE_COST * Math.pow(COST_MULT, m.tavern_level - 1));
     btnUpDock.disabled = m.wood < Math.floor(DOCK_BASE_COST * Math.pow(COST_MULT, m.dock_level - 1));
@@ -1316,6 +1365,18 @@
     } else {
       debrisRow.style.display = 'none';
       btnCollectDebris.disabled = true;
+    }
+
+    const now = Date.now();
+    if (buyShieldRow && btnBuyShield) {
+      const canBuy = !m.is_newbie_shield && (m.shield_cooldown_until || 0) <= now;
+      buyShieldRow.style.display = canBuy ? 'flex' : 'none';
+      if (canBuy) {
+        const costRum = Math.floor(m.rum * 0.1);
+        const costGold = Math.floor(m.gold * 0.1);
+        const costWood = Math.floor(m.wood * 0.1);
+        btnBuyShield.disabled = m.rum < costRum || m.gold < costGold || m.wood < costWood;
+      }
     }
 
     // World Map button: доступно только начиная с WORLD_UNLOCK_LVL
@@ -1626,6 +1687,24 @@
       }
     });
   });
+
+  if (btnBuyShield) {
+    btnBuyShield.addEventListener('click', () => {
+      socket.emit('buyShield', (resp) => {
+        if (resp.ok) {
+          const m = me();
+          if (m) {
+            m.shield_until = resp.shieldUntil;
+            m.shield_cooldown_until = resp.shieldCooldownUntil;
+          }
+          showToast(t('shield_h', 1), 'good');
+          updateHUD();
+        } else {
+          showToast(resp.msg || 'Shield', 'bad');
+        }
+      });
+    });
+  }
 
   btnSendRaid.addEventListener('click', () => {
     socket.emit('sendRaid', (resp) => {
@@ -2133,9 +2212,11 @@
     }
     ctx.font = '11px Georgia';
     const rate = BASE_RUM + (p.tavern_level - 1) * RUM_PER_TAV;
-    const legacyMult = 1 + p.legacy_bonus;
+    const passives = p.passives || {};
+    const passiveRum = (passives.rum_bonus || 0) + (passives.wipe_boost || 0);
+    const totalMult = (1 + passiveRum / 100) * (1 + (p.legacy_bonus || 0));
     ctx.fillStyle = 'rgba(255,213,67,0.65)';
-    ctx.fillText(t('rum_sec_label', Math.floor(rate * legacyMult)), cx, bottomY + 28);
+    ctx.fillText(t('rum_sec_label', Math.floor(rate * totalMult)), cx, bottomY + 28);
     const woodRate = (ARCHI_WOOD_PER_SEC * getArchipelagoCount(p.nick)).toFixed(1);
     ctx.fillStyle = 'rgba(168,192,96,0.65)';
     ctx.fillText(t('wood_sec_label', woodRate), cx, bottomY + 42);

@@ -28,7 +28,7 @@
 - Рейды: AI-рейд (activeRaids), рейды на архипелаг (archi_raids, archi_depleted), рейды на ресурсные острова (resource_raids); тик RAID_CHECK_TICK — завершение, лут, деплеция, события raidResult, archiResult, resourceRaidResult.
 - Ресурсные острова: generateResourceIslands(), хранение в Redis (ключ `resourceIslands`, JSON); при старте — загрузка из Redis или генерация + сохранение; при деплеции — обновление depleted_until и запись в Redis.
 - PvP: attackPlayer → полёт миссии (pvpMissions), resolvePvpAttack — кража, щит, destruction_state, debris, legacy_bonus.
-- Redis: player:<id>, player:<id>:resources, :cooldowns, :destruction_state, :debris, :legacy_bonus; players:nicks; resourceIslands. Автосейв игроков раз в 20 с.
+- Redis: player:<id>, player:<id>:resources, :cooldowns, :destruction_state, :debris, :legacy_bonus, :passives (JSON: rum_bonus, raid_speed, pvp_steal, wipe_boost, successful_raids), :pvp_attacks (JSON: { targetNick: { c, t } }), :wipe_state (JSON); players:nicks; resourceIslands. Автосейв игроков раз в 20 с.
 
 ### Docker
 - `Dockerfile`: копирует package.json, server.js, index.html, `assets/`. `docker-compose.yml`: монтирует `./server.js`, `./index.html`, `./assets` в контейнер.

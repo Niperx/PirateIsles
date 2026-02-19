@@ -61,15 +61,34 @@ const RAID_LOOT_MIN = 150;
 const RAID_LOOT_MAX = 1200;
 const BOAT_LOSS_CHANCE = 0.12;          // 12% базовый шанс потери
 
-// PvP
-const PVP_STEAL_MIN = 0.45;
-const PVP_STEAL_MAX = 0.65;
-const SHIELD_MIN_HOURS = 4;
-const SHIELD_MAX_HOURS = 8;
-const DEBRIS_RATIO = 0.40;              // 40% от украденного → debris
-const DEBRIS_ATTACKER_SHARE = 0.70;     // 70% debris → атакующий сразу
-const DEBRIS_DEFENDER_SHARE = 0.30;     // 30% debris → защитник пассивно
-const PVP_COOLDOWN = 30 * 60 * 1000;   // 30 мин кулдаун
+// PvP v2 — wipe, щиты, пассивки
+const PVP_STEAL_BASE_MIN = 0.45;
+const PVP_STEAL_BASE_MAX = 0.65;
+const PVP_STEAL_PER_WIN_PCT = 2;           // +2% за каждую PvP-победу (passives)
+const PVP_BOATS_REQUIRED = 2;              // лодок на одну атаку (риск 20–30% от пушек жертвы)
+const PVP_CANNON_LOSS_CHANCE_MIN = 0.20;  // мин шанс потери лодки от пушек
+const PVP_CANNON_LOSS_CHANCE_MAX = 0.30;
+const PVP_ATTACK_COOLDOWN_MS = 90 * 1000;  // 1–2 мин между атаками на одного игрока
+const PVP_ATTACKS_PER_TARGET_PER_24H = 5;
+const PVP_FLEET_FATIGUE_AFTER = 3;         // после 3 атак подряд — кулдаун
+const PVP_FLEET_FATIGUE_COOLDOWN_MS = 60 * 60 * 1000; // 1 час
+const WIPE_ATTACKS_MIN = 3;
+const WIPE_ATTACKS_MAX = 5;                // случайное порог 3–5 для каждого острова
+const WIPE_LEVEL_DROP_MIN = 1;
+const WIPE_LEVEL_DROP_MAX = 2;             // за атаку -1 или -2 уровня
+const ISLAND_LEVEL_MAX = 15;
+const SHIELD_NEWBIE_HOURS = 2;
+const SHIELD_NEWBIE_MAX_LEVEL = 5;
+const SHIELD_POST_ATTACK_HOURS = 1;
+const SHIELD_POST_ATTACK_BREACH_CHANCE = 0.50; // усиленный рейд пробивает с 50%
+const SHIELD_BUY_COST_PCT = 0.10;          // 10% текущих ресурсов
+const SHIELD_BUY_DURATION_MS = 60 * 60 * 1000; // 1 час
+const SHIELD_BUY_COOLDOWN_MS = 6 * 60 * 60 * 1000; // 6 часов
+const ENHANCED_RAID_BOATS = 4;             // ×2 от обычных 2 — усиленный рейд
+const DEBRIS_RATIO = 0.40;
+const DEBRIS_ATTACKER_SHARE = 0.70;
+const DEBRIS_DEFENDER_SHARE = 0.30;
+const PVP_COOLDOWN_MS = 2 * 60 * 1000;    // 2 мин после атаки (на любую цель)
 
 // Оффлайн
 const OFFLINE_RATE = 0.40;              // 40% от онлайн-скорости
@@ -80,8 +99,12 @@ const AUTO_REPAIR_PER_HOUR = 0.015;     // 1.5% уровня острова в �
 const AUTO_REPAIR_RUM_PER_LVL = 10;     // стоимость ремонта в rum за тик за уровень
 const AUTO_REPAIR_PROGRESS_PER_SEC = AUTO_REPAIR_PER_HOUR / 3600; // доля прогресса за 1 сек на 1 уровень
 
-// Destruction / Legacy
-const LEGACY_BONUS_PER_DESTROY = 0.01;  // +1% дохода
+// Пассивки (наследие) — переносятся после wipe
+const PASSIVE_RUM_PERCENT_PER_TAVERN_UPGRADE = 0.5;   // +0.5% рома за апгрейд таверны
+const PASSIVE_RAID_SPEED_PER_10_RAIDS = 1;           // +1% скорости рейдов за каждые 10 успешных
+const PASSIVE_PVP_STEAL_PER_WIN = 2;                 // +2% кражи за PvP-победу
+const WIPE_BOOST_MIN = 5;                             // +5–10% буст после wipe за прошлую жизнь
+const WIPE_BOOST_MAX = 10;
 
 // Auth
 const NICK_MIN = 3;
@@ -92,8 +115,8 @@ const MAP_W = 3000;
 const MAP_H = 2000;
 // Минимальная дистанция между стартовыми островами игроков на карте
 const PLAYER_MIN_DISTANCE = 450;
-const PVP_SPEED = 70;           // world-units/sec — медленнее, чем за ресурсами (BOAT_SPEED)
-const BOAT_SPEED = 120;         // world-units/sec — одинаковая скорость до острова (архипелаг, ресурсные)
+const BOAT_SPEED = 58;         // world-units/sec — скорость до острова (архипелаг, ресурсные), естественный темп
+const PVP_SPEED = 34;          // world-units/sec — рейд медленнее, чем поход за ресурсами (PVP_SPEED < BOAT_SPEED)
 const PVP_MISSION_TICK = 100;   // ms — тик движения PvP-лодок
 
 // Архипелаг (острова-спутники у базы)
@@ -252,8 +275,29 @@ function cannonCostWood(level) {
 
 function rumRate(player) {
   const base = BASE_RUM_PER_SEC + (player.tavern_level - 1) * RUM_PER_TAVERN_LVL;
-  const legacyMult = 1 + player.legacy_bonus;
-  return Math.floor(base * legacyMult);
+  const passives = player.passives || defaultPassives();
+  const passiveMult = 1 + (passives.rum_bonus + passives.wipe_boost) / 100;
+  const legacyMult = 1 + (player.legacy_bonus || 0);
+  return Math.floor(base * passiveMult * legacyMult);
+}
+
+// Щит новичка: первые 2 ч ИЛИ до lvl 5 ИЛИ до первой атаки на другого (что раньше)
+function isNewbieShield(player) {
+  if (!player) return false;
+  const twoHours = SHIELD_NEWBIE_HOURS * 3600 * 1000;
+  if (Date.now() - player.created_at < twoHours) return true;
+  if ((player.island_level || 0) < SHIELD_NEWBIE_MAX_LEVEL) return true;
+  if (!player.has_attacked_anyone) return true;
+  return false;
+}
+
+// Цель под щитом (новичок — полный; остальные — обычный shield_until, усиленный рейд может пробить)
+function isTargetShielded(target, enhancedRaid) {
+  if (!target) return true;
+  if (isNewbieShield(target)) return true;
+  if (target.shield_until <= Date.now()) return false;
+  if (enhancedRaid && Math.random() < SHIELD_POST_ATTACK_BREACH_CHANCE) return false;
+  return true;
 }
 
 // ── Redis persistence (multi-key) ────────────────────────
@@ -265,8 +309,15 @@ function pResKey(id) { return `player:${id}:resources`; }
 function pCdKey(id) { return `player:${id}:cooldowns`; }
 function pDestrKey(id) { return `player:${id}:destruction_state`; }
 function pLegacyKey(id) { return `player:${id}:legacy_bonus`; }
+function pPassivesKey(id) { return `player:${id}:passives`; }
+function pPvpAttacksKey(id) { return `player:${id}:pvp_attacks`; }
+function pWipeStateKey(id) { return `player:${id}:wipe_state`; }
 function pDebrisKey(id) { return `player:${id}:debris`; }
 function pArchiDepletedKey(id) { return `player:${id}:archi_depleted`; }
+
+function defaultPassives() {
+  return { rum_bonus: 0, raid_speed: 0, pvp_steal: 0, wipe_boost: 0, successful_raids: 0, pvp_wins: 0 };
+}
 
 async function persistPlayer(id) {
   const p = players[id];
@@ -287,6 +338,8 @@ async function persistPlayer(id) {
     cannon_level: String(p.cannon_level),
     boats: String(p.boats),
     shield_until: String(p.shield_until),
+    shield_cooldown_until: String(p.shield_cooldown_until || 0),
+    has_attacked_anyone: p.has_attacked_anyone ? '1' : '0',
     created_at: String(p.created_at),
     color: p.color
   });
@@ -307,6 +360,17 @@ async function persistPlayer(id) {
   // Скаляры
   pipe.set(pDestrKey(id), String(p.destruction_state));
   pipe.set(pLegacyKey(id), String(p.legacy_bonus));
+  pipe.set(pPassivesKey(id), JSON.stringify(p.passives || defaultPassives()));
+  const pvpAttacks = p.pvp_attacks || {};
+  const dayAgo = Date.now() - 24 * 3600 * 1000;
+  const filtered = {};
+  for (const k of Object.keys(pvpAttacks)) {
+    const v = pvpAttacks[k];
+    if (v && typeof v.t === 'number' && v.t > dayAgo) filtered[k] = v;
+  }
+  pipe.set(pPvpAttacksKey(id), JSON.stringify(filtered));
+  const ws = p.wipe_state || { threshold: WIPE_ATTACKS_MIN, count: 0 };
+  pipe.set(pWipeStateKey(id), JSON.stringify({ threshold: ws.threshold, count: ws.count }));
 
   // Debris
   if (p.debris_gold > 0 && p.debris_ttl > Date.now()) {
@@ -343,6 +407,9 @@ async function removePlayer(id) {
   pipe.del(pCdKey(id));
   pipe.del(pDestrKey(id));
   pipe.del(pLegacyKey(id));
+  pipe.del(pPassivesKey(id));
+  pipe.del(pPvpAttacksKey(id));
+  pipe.del(pWipeStateKey(id));
   pipe.del(pDebrisKey(id));
   pipe.del(pArchiDepletedKey(id));
   pipe.srem(PLAYERS_SET_KEY, id);
@@ -367,6 +434,9 @@ async function loadPlayersFromRedis() {
       pipe.get(pLegacyKey(id));        // 4
       pipe.hgetall(pDebrisKey(id));    // 5
       pipe.get(pArchiDepletedKey(id)); // 6
+      pipe.get(pPassivesKey(id));      // 7
+      pipe.get(pPvpAttacksKey(id));    // 8
+      pipe.get(pWipeStateKey(id));     // 9
       const results = await pipe.exec();
 
       const base = results[0][1] || {};
@@ -376,6 +446,8 @@ async function loadPlayersFromRedis() {
       const legacy = results[4][1];
       const debris = results[5][1] || {};
       const archiDepRaw = results[6][1];
+      const passivesRaw = results[7][1];
+      const pvpAttacksRaw = results[8][1];
 
       if (!base.nick) continue; // битая запись
 
@@ -395,6 +467,8 @@ async function loadPlayersFromRedis() {
         // только в памяти и сбрасываются при рестарте — лодки «возвращаются» автоматически
         boats: boatCapacity(parseInt(base.dock_level) || 1),
         shield_until: parseInt(base.shield_until) || 0,
+        shield_cooldown_until: parseInt(base.shield_cooldown_until) || 0,
+        has_attacked_anyone: base.has_attacked_anyone === '1',
         created_at: parseInt(base.created_at) || Date.now(),
         color: base.color || `hsl(${randInt(0, 360)}, 60%, 50%)`,
         rum: parseFloat(res.rum) || 0,
@@ -417,6 +491,27 @@ async function loadPlayersFromRedis() {
             for (const k of Object.keys(o)) out[k] = parseInt(o[k], 10) || 0;
             return out;
           } catch (_) { return {}; }
+        })(),
+        passives: (() => {
+          try {
+            const o = passivesRaw ? JSON.parse(passivesRaw) : null;
+            if (typeof o !== 'object' || o === null) return defaultPassives();
+            return { ...defaultPassives(), ...o };
+          } catch (_) { return defaultPassives(); }
+        })(),
+        pvp_attacks: (() => {
+          try {
+            const o = pvpAttacksRaw ? JSON.parse(pvpAttacksRaw) : null;
+            return typeof o === 'object' && o !== null ? o : {};
+          } catch (_) { return {}; }
+        })(),
+        wipe_state: (() => {
+          try {
+            const raw = results[9] && results[9][1];
+            const o = raw ? JSON.parse(raw) : null;
+            if (typeof o === 'object' && o !== null && typeof o.threshold === 'number' && typeof o.count === 'number') return o;
+            return { threshold: WIPE_ATTACKS_MIN + randInt(0, WIPE_ATTACKS_MAX - WIPE_ATTACKS_MIN), count: 0 };
+          } catch (_) { return { threshold: WIPE_ATTACKS_MIN + randInt(0, WIPE_ATTACKS_MAX - WIPE_ATTACKS_MIN), count: 0 }; }
         })()
       };
     } catch (e) {
@@ -485,19 +580,34 @@ function createPlayer(nick, passwordHash = null) {
     cannon_level: 0,
     boats: BASE_BOAT_CAPACITY,
     shield_until: 0,
+    shield_cooldown_until: 0,
+    has_attacked_anyone: false,
     destruction_state: 0,
     repair_progress: 0,
     legacy_bonus: 0,
+    passives: defaultPassives(),
+    pvp_attacks: {},
+    wipe_state: { threshold: WIPE_ATTACKS_MIN + randInt(0, WIPE_ATTACKS_MAX - WIPE_ATTACKS_MIN), count: 0 },
     debris_gold: 0,
     debris_ttl: 0,
     raid_cooldown: 0,
     pvp_cooldown: 0,
-    archi_raids: [],     // [{idx, startTime, duration, type}]
-    archi_depleted: {},  // {idx: timestamp_until_replenished}
-    resource_raids: [],  // [{islandId, startTime, duration}]
+    archi_raids: [],
+    archi_depleted: {},
+    resource_raids: [],
     created_at: Date.now(),
     color: `hsl(${randInt(0, 360)}, 60%, 50%)`
   };
+}
+
+// Щит новичка: первые 2ч ИЛИ до lvl 5 ИЛИ до первой атаки на другого (что раньше)
+function isNewbieShielded(p) {
+  if (!p) return false;
+  const now = Date.now();
+  if (now < p.created_at + SHIELD_NEWBIE_HOURS * 3600 * 1000) return true;
+  if ((p.island_level || 0) < SHIELD_NEWBIE_MAX_LEVEL) return true;
+  if (!p.has_attacked_anyone) return true;
+  return false;
 }
 
 // ── Оффлайн-прогресс ────────────────────────────────────
@@ -538,12 +648,17 @@ function getPlayerPublic(id) {
     boats: p.boats,
     boats_max: boatCapacity(p.dock_level),
     shield_until: p.shield_until,
+    shield_cooldown_until: p.shield_cooldown_until || 0,
+    has_attacked_anyone: p.has_attacked_anyone,
+    is_newbie_shield: isNewbieShielded(p),
     destruction_state: p.destruction_state,
     legacy_bonus: p.legacy_bonus,
+    passives: p.passives || defaultPassives(),
     debris_gold: Math.floor(p.debris_gold),
     online: p.online,
     color: p.color,
     pvp_cooldown: p.pvp_cooldown,
+    created_at: p.created_at,
     active_raids: myRaidsCount,
     archi_raids: (p.archi_raids || []).map(r => ({
       idx: r.idx, startTime: r.startTime, duration: r.duration, type: r.type
@@ -551,7 +666,8 @@ function getPlayerPublic(id) {
     archi_depleted: p.archi_depleted || {},
     resource_raids: (p.resource_raids || []).map(r => ({
       islandId: r.islandId, startTime: r.startTime, duration: r.duration
-    }))
+    })),
+    wipe_state: p.wipe_state || { threshold: WIPE_ATTACKS_MIN, count: 0 }
   };
 }
 
@@ -576,14 +692,57 @@ function getStatePayload() {
   return { players: list, pvpMissions: getPvpMissionsPublic(), resourceIslands: getResourceIslandsPublic(), timestamp: Date.now() };
 }
 
+// ── Wipe: сброс острова, пассивки переносятся, +5–10% wipe_boost ─────────
+function wipePlayer(target, attackerNick) {
+  const id = target.nick;
+  const passives = target.passives || defaultPassives();
+  const wipeBoostGain = WIPE_BOOST_MIN + Math.random() * (WIPE_BOOST_MAX - WIPE_BOOST_MIN);
+  passives.wipe_boost = (passives.wipe_boost || 0) + wipeBoostGain;
+  target.passives = passives;
+
+  const pos = findFreePlayerPosition();
+  target.pos_x = pos.x;
+  target.pos_y = pos.y;
+  target.island_level = 1;
+  target.tavern_level = 1;
+  target.dock_level = 1;
+  target.cannon_level = 0;
+  target.boats = BASE_BOAT_CAPACITY;
+  target.rum = 0;
+  target.gold = 0;
+  target.wood = 0;
+  target.destruction_state = 0;
+  target.repair_progress = 0;
+  target.shield_until = Date.now() + SHIELD_POST_ATTACK_HOURS * 3600 * 1000;
+  target.wipe_state = { threshold: WIPE_ATTACKS_MIN + randInt(0, WIPE_ATTACKS_MAX - WIPE_ATTACKS_MIN), count: 0 };
+  target.debris_gold = 0;
+  target.debris_ttl = 0;
+  target.archi_raids = [];
+  target.resource_raids = [];
+  target.legacy_bonus = 0;
+
+  persist(id);
+  io.to(id).emit('wiped', {
+    by: attackerNick,
+    passives: target.passives,
+    wipe_boost_gained: wipeBoostGain,
+    newShieldUntil: target.shield_until,
+    msg: 'Island destroyed. Your legacy carries on — start again with bonus!'
+  });
+  io.emit('chat', { from: 'PvP', text: `${id}'s island was wiped by ${attackerNick}! +${wipeBoostGain.toFixed(0)}% legacy boost.` });
+  console.log(`[WIPE] ${id} wiped by ${attackerNick}, wipe_boost +${wipeBoostGain.toFixed(1)}%`);
+}
+
 // ── Resolve PvP mission по прилёту ───────────────────────
 function resolvePvpAttack(m) {
   const attacker = players[m.owner];
   const target = players[m.targetNick];
 
-  // Возврат лодки атакующему
+  const boatsUsed = m.boatsUsed || PVP_BOATS_REQUIRED;
   if (attacker) {
-    attacker.boats = Math.min(attacker.boats + 1, boatCapacity(attacker.dock_level));
+    const cannonChance = PVP_CANNON_LOSS_CHANCE_MIN + Math.random() * (PVP_CANNON_LOSS_CHANCE_MAX - PVP_CANNON_LOSS_CHANCE_MIN);
+    const lost = Math.random() < cannonChance ? 1 : 0;
+    attacker.boats = Math.min(attacker.boats + Math.max(0, boatsUsed - lost), boatCapacity(attacker.dock_level));
   }
 
   if (!target) {
@@ -591,8 +750,8 @@ function resolvePvpAttack(m) {
     return;
   }
 
-  // Если цель получила щит пока лодка летела
-  if (target.shield_until > Date.now()) {
+  // Щит: новичок — полный; иначе при полёте мог включиться; усиленный рейд может пробить (50%)
+  if (isTargetShielded(target, !!m.enhancedRaid)) {
     if (attacker) io.to(m.owner).emit('attackResult', { ok: false, msg: 'Target is shielded' });
     return;
   }
@@ -600,7 +759,9 @@ function resolvePvpAttack(m) {
   const attackPower = (attacker ? attacker.boats * 10 + attacker.island_level * 5 : 10);
   const defensePower = target.cannon_level * 15 + target.island_level * 3;
   const defenseReduction = Math.min(0.5, defensePower / (attackPower + defensePower + 1));
-  const stealPercent = PVP_STEAL_MIN + Math.random() * (PVP_STEAL_MAX - PVP_STEAL_MIN);
+  const baseSteal = PVP_STEAL_BASE_MIN + Math.random() * (PVP_STEAL_BASE_MAX - PVP_STEAL_BASE_MIN);
+  const pvpStealPct = (attacker && (attacker.passives || {}).pvp_steal) ? attacker.passives.pvp_steal : 0;
+  const stealPercent = Math.min(0.95, baseSteal + pvpStealPct / 100);
   const effectiveSteal = stealPercent * (1 - defenseReduction);
 
   const stolenRum  = Math.floor(target.rum  * effectiveSteal);
@@ -617,14 +778,11 @@ function resolvePvpAttack(m) {
     attacker.rum  += stolenRum  - Math.floor(stolenRum  * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenRum  / safe));
     attacker.gold += stolenGold - Math.floor(stolenGold * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenGold / safe));
     attacker.wood += stolenWood - Math.floor(stolenWood * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenWood / safe));
+    const ap = attacker.passives || defaultPassives();
+    ap.pvp_steal = (ap.pvp_steal || 0) + PVP_STEAL_PER_WIN_PCT;
+    ap.pvp_wins = (ap.pvp_wins || 0) + 1;
+    attacker.passives = ap;
     persist(m.owner);
-    io.to(m.owner).emit('attackResult', {
-      ok: true,
-      target: m.targetNick,
-      stolen: { rum: stolenRum, gold: stolenGold, wood: stolenWood },
-      totalStolen,
-      debris: debrisTotal
-    });
   }
 
   target.rum  = Math.max(0, target.rum  - stolenRum);
@@ -633,12 +791,28 @@ function resolvePvpAttack(m) {
   target.debris_gold += defenderDebris;
   target.debris_ttl = Date.now() + 24 * 3600 * 1000;
 
-  const shieldHours = SHIELD_MIN_HOURS + Math.random() * (SHIELD_MAX_HOURS - SHIELD_MIN_HOURS);
-  target.shield_until = Date.now() + Math.floor(shieldHours * 3600 * 1000);
-  target.destruction_state = Math.min(2, target.destruction_state + 1);
+  target.shield_until = Date.now() + SHIELD_POST_ATTACK_HOURS * 3600 * 1000;
+  target.destruction_state = Math.min(2, (target.destruction_state || 0) + 1);
 
-  if (target.destruction_state >= 2) {
-    target.legacy_bonus += LEGACY_BONUS_PER_DESTROY * target.island_level;
+  const ws = target.wipe_state || { threshold: WIPE_ATTACKS_MIN + randInt(0, WIPE_ATTACKS_MAX - WIPE_ATTACKS_MIN), count: 0 };
+  ws.count = (ws.count || 0) + 1;
+  const levelDrop = WIPE_LEVEL_DROP_MIN + randInt(0, WIPE_LEVEL_DROP_MAX - WIPE_LEVEL_DROP_MIN);
+  const oldLevel = target.island_level || 1;
+  target.island_level = Math.max(1, oldLevel - levelDrop);
+  const levelDropped = oldLevel - target.island_level;
+  const didWipe = ws.count >= ws.threshold;
+  if (didWipe) wipePlayer(target, m.owner);
+
+  if (attacker) {
+    io.to(m.owner).emit('attackResult', {
+      ok: true,
+      target: m.targetNick,
+      stolen: { rum: stolenRum, gold: stolenGold, wood: stolenWood },
+      totalStolen,
+      debris: debrisTotal,
+      levelDropped,
+      targetWiped: didWipe
+    });
   }
 
   persist(m.targetNick);
@@ -648,12 +822,15 @@ function resolvePvpAttack(m) {
     lost: { rum: stolenRum, gold: stolenGold, wood: stolenWood },
     shieldUntil: target.shield_until,
     destructionState: target.destruction_state,
-    debrisGold: defenderDebris
+    debrisGold: defenderDebris,
+    levelDropped,
+    islandLevel: target.island_level,
+    wiped: didWipe
   });
 
   io.emit('chat', {
     from: 'PvP',
-    text: `${m.owner} raided ${m.targetNick}! Stole ${totalStolen} resources`
+    text: `${m.owner} raided ${m.targetNick}! Stole ${totalStolen} resources${levelDropped ? `, island -${levelDropped} lvl` : ''}`
   });
 
   console.log(`[PVP] Mission resolved: ${m.owner} → ${m.targetNick}, stole ${totalStolen}`);
@@ -735,7 +912,12 @@ setInterval(() => {
       p.rum += lootRum;
       p.wood += lootWood;
       p.gold += lootGold;
-      p.boats = Math.min(p.boats + 1, boatCapacity(p.dock_level)); // лодка возвращается
+      p.boats = Math.min(p.boats + 1, boatCapacity(p.dock_level));
+
+      const pa = p.passives || defaultPassives();
+      pa.successful_raids = (pa.successful_raids || 0) + 1;
+      pa.raid_speed = Math.floor((pa.successful_raids || 0) / 10) * PASSIVE_RAID_SPEED_PER_10_RAIDS;
+      p.passives = pa;
 
       console.log(`[RAID] ${raid.playerId}: returned, loot=${total} (rum=${lootRum}, wood=${lootWood}, gold=${lootGold})`);
       io.to(raid.playerId).emit('raidResult', {
@@ -769,10 +951,13 @@ setInterval(() => {
 
       if (!boatLost) {
         p.boats = Math.min(p.boats + 1, boatCapacity(p.dock_level));
+        const pa = p.passives || defaultPassives();
+        pa.successful_raids = (pa.successful_raids || 0) + 1;
+        pa.raid_speed = Math.floor((pa.successful_raids || 0) / 10) * PASSIVE_RAID_SPEED_PER_10_RAIDS;
+        p.passives = pa;
       }
       p[lootDef.resource] = (p[lootDef.resource] || 0) + lootAmt;
 
-      // Деплеция острова
       if (!p.archi_depleted) p.archi_depleted = {};
       p.archi_depleted[ar.idx] = now2 + ARCHI_DEPLETION;
 
@@ -810,10 +995,13 @@ setInterval(() => {
 
       if (!boatLost) {
         p.boats = Math.min(p.boats + 1, boatCapacity(p.dock_level));
+        const pa = p.passives || defaultPassives();
+        pa.successful_raids = (pa.successful_raids || 0) + 1;
+        pa.raid_speed = Math.floor((pa.successful_raids || 0) / 10) * PASSIVE_RAID_SPEED_PER_10_RAIDS;
+        p.passives = pa;
       }
       p[lootDef.resource] = (p[lootDef.resource] || 0) + lootAmt;
 
-      // Деплеция острова (общая для всех игроков)
       island.depleted_until = now3 + RESOURCE_DEPLETION;
       resourceIslandsDirty = true;
 
@@ -981,6 +1169,9 @@ io.on('connection', (socket) => {
     }
     p.rum -= cost;
     p.tavern_level += 1;
+    const pa = p.passives || defaultPassives();
+    pa.rum_bonus = (pa.rum_bonus || 0) + PASSIVE_RUM_PERCENT_PER_TAVERN_UPGRADE;
+    p.passives = pa;
     persist(currentNick);
     console.log(`[UPGRADE] ${currentNick}: tavern → ${p.tavern_level} (cost ${cost} rum)`);
     callback({ ok: true, tavern_level: p.tavern_level, rum: Math.floor(p.rum) });
@@ -1168,6 +1359,9 @@ io.on('connection', (socket) => {
       const remainH = Math.ceil((target.shield_until - Date.now()) / 3600000);
       return callback({ ok: false, msg: `Target is shielded (${remainH}h left)` });
     }
+    if (isNewbieShielded(target)) {
+      return callback({ ok: false, msg: 'Target is under newbie protection' });
+    }
 
     // Кулдаун
     if (attacker.pvp_cooldown > Date.now()) {
@@ -1175,12 +1369,26 @@ io.on('connection', (socket) => {
       return callback({ ok: false, msg: `PvP cooldown: ${remainM} min` });
     }
 
-    // Нужна хотя бы 1 лодка
-    if (attacker.boats <= 0) {
-      return callback({ ok: false, msg: 'Need at least 1 boat to attack' });
+    const enhancedRaid = !!data.enhancedRaid;
+    const boatsNeeded = enhancedRaid ? ENHANCED_RAID_BOATS : PVP_BOATS_REQUIRED;
+    if (attacker.boats < boatsNeeded) {
+      return callback({ ok: false, msg: `Need ${boatsNeeded} boats${enhancedRaid ? ' (enhanced raid)' : ''}` });
     }
 
-    // Запускаем летящую миссию
+    const pvpAttacks = attacker.pvp_attacks || {};
+    const rec = pvpAttacks[targetNick] || { c: 0, t: 0 };
+    const now = Date.now();
+    const dayAgo = now - 24 * 3600 * 1000;
+    if (rec.t > dayAgo && rec.c >= PVP_ATTACKS_PER_TARGET_PER_24H) {
+      return callback({ ok: false, msg: 'Max 5 attacks per target per day' });
+    }
+    if (rec.c >= PVP_FLEET_FATIGUE_AFTER && (now - rec.t) < PVP_FLEET_FATIGUE_COOLDOWN_MS) {
+      return callback({ ok: false, msg: 'Fleet fatigue: wait 1h before attacking this player again' });
+    }
+    if (rec.t > 0 && (now - rec.t) < PVP_ATTACK_COOLDOWN_MS) {
+      return callback({ ok: false, msg: 'Wait 1–2 min before attacking same player again' });
+    }
+
     const dx = target.pos_x - attacker.pos_x;
     const dy = target.pos_y - attacker.pos_y;
     const dist = Math.sqrt(dx * dx + dy * dy);
@@ -1196,12 +1404,16 @@ io.on('connection', (socket) => {
       tx: target.pos_x,
       ty: target.pos_y,
       speed: PVP_SPEED,
-      ownerColor: attacker.color
+      ownerColor: attacker.color,
+      boatsUsed: boatsNeeded,
+      enhancedRaid
     });
 
-    // Расходуем лодку и ставим кулдаун сразу
-    attacker.boats = Math.max(0, attacker.boats - 1);
-    attacker.pvp_cooldown = Date.now() + PVP_COOLDOWN;
+    attacker.has_attacked_anyone = true;
+    attacker.boats = Math.max(0, attacker.boats - boatsNeeded);
+    attacker.pvp_cooldown = now + PVP_COOLDOWN_MS;
+    pvpAttacks[targetNick] = { c: rec.c + 1, t: now };
+    attacker.pvp_attacks = pvpAttacks;
     persist(currentNick);
 
     console.log(`[PVP] ${currentNick} → ${targetNick}: mission launched (dist=${Math.round(dist)}, ETA=${eta}s)`);
@@ -1213,6 +1425,32 @@ io.on('connection', (socket) => {
       text: `${currentNick} launched attack on ${targetNick}! (ETA ~${eta}s)`
     });
     io.emit('state', getStatePayload());
+  });
+
+  // ── Покупка щита (10% ресурсов, 1 ч, кулдаун 6 ч) ─────
+  socket.on('buyShield', (callback) => {
+    if (typeof callback !== 'function') return;
+    if (!currentNick || !players[currentNick]) return callback({ ok: false, msg: 'Not logged in' });
+    const p = players[currentNick];
+    const now = Date.now();
+    if (p.shield_cooldown_until > now) {
+      const remainM = Math.ceil((p.shield_cooldown_until - now) / 60000);
+      return callback({ ok: false, msg: `Shield cooldown: ${remainM} min` });
+    }
+    const costRum = Math.max(0, Math.floor(p.rum * SHIELD_BUY_COST_PCT));
+    const costGold = Math.max(0, Math.floor(p.gold * SHIELD_BUY_COST_PCT));
+    const costWood = Math.max(0, Math.floor(p.wood * SHIELD_BUY_COST_PCT));
+    if (p.rum < costRum || p.gold < costGold || p.wood < costWood) {
+      return callback({ ok: false, msg: `Need 10% resources (${costRum} rum, ${costGold} gold, ${costWood} wood)` });
+    }
+    p.rum -= costRum;
+    p.gold -= costGold;
+    p.wood -= costWood;
+    p.shield_until = now + SHIELD_BUY_DURATION_MS;
+    p.shield_cooldown_until = now + SHIELD_BUY_COOLDOWN_MS;
+    persist(currentNick);
+    console.log(`[SHIELD] ${currentNick} bought shield (1h), cooldown 6h`);
+    callback({ ok: true, shieldUntil: p.shield_until, shieldCooldownUntil: p.shield_cooldown_until });
   });
 
   // ── Сбор debris ────────────────────────────────────────
@@ -1268,6 +1506,10 @@ async function start() {
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`[SYSTEM] PirateIsles v0.1 running on http://localhost:${PORT}`);
+  });
+}
+start();
+${PORT}`);
   });
 }
 start();
