@@ -11,38 +11,55 @@
 
 ### Клиент (index.html)
 - Логин: ник + опциональный пароль, guest, сохранение в localStorage.
-- HUD: ром, золото, дерево, лодки, щит; панели: постройки, рейды (с группировкой PvE/архипелаг/ресурсные острова, сортировка по ETA), список игроков.
+- HUD: ром, золото, дерево, лодки (текущее/макс), щит; панели: постройки, рейды (с группировкой PvE/архипелаг/ресурсные острова, сортировка по ETA), список игроков.
 - Canvas: два режима — база (свой остров + архипелаг) и мировая карта (острова игроков, ресурсные острова, PvP-миссии). Переключение кнопкой; кнопка «Вернуться на базу» в world mode.
 - Вода: переливающийся градиент + тайл `ripples.png` с параллаксом по камере и времени.
-- Остров: свой — эллипс, постройки (таверна, док, пушки), лодки у дока, щит-купол, стадии разрушения; архипелаг — островки у базы, клик → рейд на островок.
+- Остров: свой — эллипс, постройки (таверна, dok, пушки), лодки у дока, щит-купол, стадии разрушения; архипелаг — островки у базы, клик → рейд на островок.
 - Ресурсные острова: на мировой карте, клик → отправка лодки; отрисовка маршрута пунктиром и лодок в пути.
 - PvP: список игроков, кнопка рейда, летящие «дротики» к цели; щит после атаки.
-- Рейды: AI-рейд (кнопка «Отправить лодку»), рейды на архипелаг, рейды на ресурсные острова; панель рейдов с прогресс-барами и таймерами.
+- Рейды: AI-рейд, рейды на архипелаг, рейды на ресурсные острова; панель рейдов с прогресс-барами и таймерами.
 - Тосты: успех/ошибка/info, авто-закрытие ~5.5 с.
 - Звуки (Web Audio): волны (loop), монета при луте, звук отправки лодки; инициализация при первом клике (логин).
 - i18n: RU/EN, переключатель, строки в `STRINGS`, `data-i18n`, `t(key, ...args)`.
+- Постройка лодки: кнопка «Строить» (id `btn-build-boat`) в панели построек под доком; стоимость `BOAT_BUILD_COST = 80` дерева (balance constants); кнопка disabled когда `boats >= boats_max` или не хватает дерева.
+
+### Анимация PvE-рейда (drawRaidBoatsAt / drawRaidShipAt)
+Три фазы, управляемые клиентским временем:
+1. **Отплытие (0–5 сек):** лодка плывёт от края острова (`islandR = baseSize * 1.4`) в случайном направлении на 180 px; направление хранится в `raidAngles` (Map: startTime → angle), назначается при получении рейда или сразу в `sendRaid`-коллбэке.
+2. **Невидимая фаза:** лодка не отрисовывается.
+3. **Возврат (5 сек, только при успехе):** добавляется в `successReturns` при получении `raidResult { success: true }`; лодка плывёт обратно к старту; при `boatLost` — возврат не показывается.
+
+Плавность: `smoothRemaining = remainingAtReceive - (Date.now() - receivedAt)` — локальная интерполяция между серверными тиками (каждые 2 сек). Все объекты в `myRaids` **обязательно** содержат `receivedAt` и `remainingAtReceive` — в том числе при оптимистичном push в `sendRaid`-коллбэке.
+
+Защита от NaN: `drawRaidShipAt` проверяет `isFinite(bx) && isFinite(by)` перед вызовом `createLinearGradient` (NaN в нём кидает исключение и убивает draw-цикл). Canvas-состояние изолировано через `ctx.save/restore`.
 
 ### Сервер (server.js)
 - Игроки: создание/вход по нику и паролю, оффлайн-прогресс при логине (ром, дерево от архипелага).
-- Ресурсы и постройки: rum, gold, wood; таверна, док, пушки, остров; расчёт стоимости и лимитов (boatCapacity, tavernCost и т.д.).
-- Рейды: AI-рейд (activeRaids), рейды на архипелаг (archi_raids, archi_depleted), рейды на ресурсные острова (resource_raids); тик RAID_CHECK_TICK — завершение, лут, деплеция, события raidResult, archiResult, resourceRaidResult.
-- Ресурсные острова: generateResourceIslands(), хранение в Redis (ключ `resourceIslands`, JSON); при старте — загрузка из Redis или генерация + сохранение; при деплеции — обновление depleted_until и запись в Redis.
-- PvP: attackPlayer → полёт миссии (pvpMissions), resolvePvpAttack — кража, щит, destruction_state, debris, legacy_bonus.
-- Redis: player:<id>, player:<id>:resources, :cooldowns, :destruction_state, :debris, :legacy_bonus, :passives (JSON: rum_bonus, raid_speed, pvp_steal, wipe_boost, successful_raids), :pvp_attacks (JSON: { targetNick: { c, t } }), :wipe_state (JSON); players:nicks; resourceIslands. Автосейв игроков раз в 20 с.
+- Ресурсы и постройки: rum, gold, wood; таверна, dok, пушки, остров; расчёт стоимости и лимитов (`boatCapacity`, `tavernCost` и т.д.).
+- **Лодки:** `boatCapacity(dockLevel) = 2 + (dockLevel - 1)`. Dok только задаёт лимит. `buyBoat` event: списывает `BOAT_BUILD_COST = 80` дерева, добавляет 1 лодку (до лимита). При апгрейде дока `p.boats = newCap` (полное восстановление). При потере в рейде лодка не возвращается сервером.
+- Рейды: AI-рейд (activeRaids), рейды на архипелаг (archi_raids, archi_depleted), рейды на ресурсные острова (resource_raids); тик `RAID_CHECK_TICK = 5000ms` — завершение, лут, деплеция, события `raidResult`, `archiResult`, `resourceRaidResult`. `raidsUpdate` рассылается в том же тике.
+- Ресурсные острова: `generateResourceIslands()`, хранение в Redis (ключ `resourceIslands`, JSON).
+- PvP: `attackPlayer` → полёт миссии (`pvpMissions`), `resolvePvpAttack` — кража, щит, `destruction_state`, debris, legacy_bonus.
+- Redis: `player:<id>`, `player:<id>:resources`, `:cooldowns`, `:destruction_state`, `:debris`, `:legacy_bonus`, `:passives` (JSON), `:pvp_attacks` (JSON), `:wipe_state` (JSON); `players:nicks`; `resourceIslands`. Автосейв раз в 20 сек.
 
 ### Docker
 - `Dockerfile`: копирует package.json, server.js, index.html, `assets/`. `docker-compose.yml`: монтирует `./server.js`, `./index.html`, `./assets` в контейнер.
 
 ## Где что искать
-- Рендер воды: в index.html функция `drawWater(W, H)`.
-- Рендер острова, построек, архипелага, ресурсных островов, PvP-миссий: функции `draw*` в index.html после `drawWater`.
-- События socket.io: в index.html — `socket.on('state', ...)`, `socket.on('raidsUpdate', ...)`, `socket.on('resourceRaidResult', ...)` и др.; в server.js — `socket.on('join', ...)`, `socket.on('upgradeTavern', ...)`, `socket.on('harvestResourceIsland', ...)` и др.
-- Баланс: константы в начале server.js (TICK_RATE, RAID_*, PVP_*, RESOURCE_*, ARCHI_* и т.д.).
-- Схема Redis: в .agent был раздел 4; при изменении ключей обновлять описание (сейчас можно вынести в .todo или оставить кратко здесь).
+- Рендер воды: `drawWater(W, H)` в index.html.
+- Рендер острова, построек, архипелага, ресурсных островов, PvP-миссий: функции `draw*` после `drawWater`.
+- Анимация PvE-лодки: `drawRaidBoatsAt(p, cx, cy)` и `drawRaidShipAt(bx, by, cosA, sinA, isReturning, label)`.
+- Состояние анимации рейдов: `myRaids` (активные рейды с полями `receivedAt`, `remainingAtReceive`), `raidAngles` (Map), `successReturns` (массив возвратов), `lastRaids` (снимок для raidResult).
+- События socket.io клиент: `socket.on('state', ...)`, `socket.on('raidsUpdate', ...)`, `socket.on('raidResult', ...)`, `socket.on('resourceRaidResult', ...)` и др.
+- События socket.io сервер: `socket.on('join', ...)`, `socket.on('sendRaid', ...)`, `socket.on('buyBoat', ...)`, `socket.on('upgradeDock', ...)`, `socket.on('harvestArchi', ...)`, `socket.on('harvestResourceIsland', ...)` и др.
+- Баланс: константы в начале server.js (`TICK_RATE`, `RAID_*`, `PVP_*`, `RESOURCE_*`, `ARCHI_*`, `BOAT_BUILD_COST` и т.д.).
+- Balance constants на клиенте: секция `// Balance constants (mirror server)` в index.html — `BOAT_BUILD_COST`, `TAVERN_BASE_COST`, `DOCK_BASE_COST`, `COST_MULT` и др.
 
 ## Ограничения и соглашения
 - Один index.html — без разбиения на отдельные JS/CSS файлы (до рефакторинга).
 - Баланс и валидация — на сервере; клиент только отображает присланные значения.
 - Ассеты подключать через путь относительно страницы, например `assets/sea/ripples.png`.
+- Любые константы, дублируемые на клиенте и сервере (например `BOAT_BUILD_COST`), менять синхронно в обоих файлах.
+- `myRaids` всегда должен содержать объекты с `receivedAt` и `remainingAtReceive` — нарушение приводит к NaN и падению draw-цикла.
 
 Планы, идеи, что делать дальше — в **.todo**.
