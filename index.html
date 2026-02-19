@@ -336,6 +336,55 @@
   }
   #offline-modal button:hover { background: rgba(131,72,72,.35); }
 
+  /* ═══ Active Defense modal ═══════════════════ */
+  #defense-modal {
+    position: fixed; inset: 0;
+    display: none; align-items: center; justify-content: center;
+    background: rgba(0,0,0,.78);
+    z-index: 60;
+  }
+  #defense-modal .modal-box {
+    background: #150a0a;
+    border: 2px solid #c0392b;
+    border-radius: 10px;
+    padding: 22px 28px;
+    text-align: center;
+    max-width: 360px;
+    width: 92%;
+    box-shadow: 0 8px 40px rgba(0,0,0,.85), 0 0 30px rgba(192,57,43,.4);
+  }
+  #defense-modal h2 {
+    color: #ff4444; margin: 0 0 6px 0; font-size: 20px;
+    text-shadow: 0 0 12px rgba(255,68,68,.5);
+    animation: defPulse .9s ease-in-out infinite alternate;
+  }
+  @keyframes defPulse { from { opacity: .65; } to { opacity: 1; } }
+  #defense-modal .def-meta { color: #ffd59d; font-size: 13px; margin-bottom: 12px; }
+  #defense-modal .def-timer-bar {
+    height: 5px; background: #2a0a0a; border-radius: 3px;
+    margin-bottom: 14px; overflow: hidden;
+  }
+  #defense-modal .def-timer-fill {
+    height: 100%; background: linear-gradient(90deg, #c0392b, #e74c3c);
+    border-radius: 3px; transition: width .3s linear;
+  }
+  #defense-modal .def-btns { display: flex; flex-direction: column; gap: 7px; margin-bottom: 12px; }
+  #defense-modal .def-btn {
+    padding: 9px 14px;
+    border: 1px solid #834848; border-radius: 6px;
+    background: rgba(131,40,40,.22); color: #ffd543;
+    cursor: pointer; font-size: 13px; font-family: inherit;
+    display: flex; justify-content: space-between; align-items: center;
+    transition: background .15s;
+  }
+  #defense-modal .def-btn:hover:not(:disabled) { background: rgba(192,57,43,.45); }
+  #defense-modal .def-btn:disabled { opacity: .38; cursor: default; }
+  #defense-modal .def-btn .def-cost { color: #d88b46; font-size: 12px; }
+  #defense-modal .def-passive {
+    font-size: 11px; color: #555; cursor: pointer; text-decoration: underline;
+  }
+  #defense-modal .def-passive:hover { color: #888; }
+
   /* ═══ Minimap ════════════════════════════════ */
   #minimap-wrap {
     position: fixed; bottom: 156px; right: 8px;
@@ -494,6 +543,7 @@
       <div class="u-info">
         <div class="u-name" data-i18n="build_boat">Build Boat</div>
         <div class="u-cost"><span id="u-boat-build-cost">80</span> <span data-i18n="wood_short">wood</span></div>
+        <div class="u-cost" id="u-boats-breakdown" style="font-size:10px;color:#834848;margin-top:2px">—</div>
       </div>
       <button class="upgrade-btn" id="btn-build-boat" data-i18n="build_btn">Build</button>
     </div>
@@ -568,6 +618,30 @@
       <h2 id="offline-title">Welcome Back!</h2>
       <div class="gains" id="offline-gains-text"></div>
       <button id="btn-offline-ok">Arrr!</button>
+    </div>
+  </div>
+
+  <!-- Active Defense modal -->
+  <div id="defense-modal">
+    <div class="modal-box">
+      <h2 id="def-title">⚔️ ATTACK!</h2>
+      <div class="def-meta" id="def-meta"></div>
+      <div class="def-timer-bar"><div class="def-timer-fill" id="def-timer-fill" style="width:100%"></div></div>
+      <div class="def-btns">
+        <button class="def-btn" id="def-btn-cannon">
+          <span id="def-cannon-label">🔥 Cannon Volley</span>
+          <span class="def-cost" id="def-cannon-cost"></span>
+        </button>
+        <button class="def-btn" id="def-btn-shield">
+          <span id="def-shield-label">🛡 Reinforce Shield</span>
+          <span class="def-cost" id="def-shield-cost"></span>
+        </button>
+        <button class="def-btn" id="def-btn-merc">
+          <span id="def-merc-label">⚓ Hire Mercenaries</span>
+          <span class="def-cost" id="def-merc-cost"></span>
+        </button>
+      </div>
+      <span class="def-passive" id="def-btn-passive">Passive defense only</span>
     </div>
   </div>
 </div>
@@ -703,9 +777,13 @@
       res_island_depleted_tip: 'Depleted ({0}m)',
       res_island_busy_tip: 'En route…',
       // Attack
-      attack_launched: 'Attack launched! ETA: ~{0}s',
-      attack_hit: 'Attack hit {0}! Stole {1}r, {2}g, {3}w',
+      attack_launched: 'Attack launched! ETA: ~{0}s ({1} boats)',
+      attack_hit: 'Victory vs {0}! Stole {1}r, {2}g, {3}w. Lost {4} boats.',
+      attack_pyrrhic: 'Pyrrhic win vs {0}! Stole {1}r, {2}g, {3}w. Lost {4} boats.',
+      attack_defeat: 'Defeated! Lost {0} boats, stole nothing.',
       attack_shielded: 'Attack failed — target shielded',
+      fleet_select: 'Fleet: {0} boat(s)',
+      confirm_attack_fleet: 'Attack {0} with {1} boats?',
       center_tip: 'Center',
       world_map_btn: '🗺 World Map',
       home_btn: '🏠 My Island',
@@ -724,6 +802,44 @@
       build_boat: 'Build Boat',
       build_btn: 'Build',
       boat_built: 'Boat built! Fleet ready.',
+      boats_away_suffix: ' ({0} away)',
+      boats_breakdown: 'Free: {0} · Away: {1} · Max: {2}',
+      // Capture points
+      capture_btn: 'Capture',
+      intercept_btn: 'Intercept',
+      capture_confirm: 'Capture with {0} boats? (~{1}s)',
+      intercept_confirm: 'Intercept {0}\'s capture with {1} boats?',
+      capture_launched: 'Capture started! ~{0}s',
+      capture_done: 'Plunder captured! +{0} gold, +{1} rum',
+      capture_respawn: 'Respawns in {0}m',
+      capture_by: 'Captured by {0}',
+      intercept_won: 'Seized! {0} lost {1} boats.',
+      intercept_fail: 'Intercept failed! Lost {0} boats.',
+      intercept_defended: '{0} tried to intercept — repelled! Lost {1} boats.',
+      intercept_lost: '{0} seized your capture! You lost {1} boats, +{2} debris.',
+      // Caravans
+      raids_group_caravan: 'Caravan intercepts',
+      raid_caravan: 'Caravan #{0}',
+      caravan_boats_prompt: 'Boats (1–{0}):',
+      caravan_intercept_confirm: 'Intercept imperial caravan with {0} boats? (~{1} min, high loot, risk of loss)',
+      caravan_launched: 'Caravan intercept launched! ~{0}s',
+      caravan_won: 'Caravan intercepted! +{0} gold, +{1} rum. Lost {2} boats.',
+      caravan_lost: 'Caravan escort repelled you! Lost {0} boats.',
+      caravan_busy: 'Already being intercepted',
+      // Active defense
+      def_incoming: '⚔️ ATTACK INCOMING!',
+      def_incoming_meta: 'By {0} | ETA ~{1}s | {2} boats',
+      def_cannon: '🔥 Cannon Volley',
+      def_cannon_cost: '{0} rum',
+      def_shield: '🛡 Reinforce Shield',
+      def_shield_cost: '{0} gold',
+      def_merc: '⚓ Hire Mercenaries',
+      def_merc_cost: '{0} rum',
+      def_passive: 'Passive defense only',
+      def_activated_cannon: 'Cannon volley fired! Defense ×2.5.',
+      def_activated_shield: 'Shield reinforced! Steal −20%.',
+      def_activated_mercenary: 'Mercenaries hired! Defense +25.',
+      def_failed: 'Defense failed: {0}',
     },
     ru: {
       subtitle: 'Idle PvPvE пиратская стратегия',
@@ -784,9 +900,13 @@
       res_island_lost: 'Лодка потеряна в море!',
       res_island_depleted_tip: 'Истощён ({0}м)',
       res_island_busy_tip: 'В пути…',
-      attack_launched: 'Атака запущена! ETA: ~{0}с',
-      attack_hit: 'Атака попала! Украдено {1}р, {2}з, {3}д у {0}',
+      attack_launched: 'Атака запущена! ETA: ~{0}с ({1} лодок)',
+      attack_hit: 'Победа над {0}! Украдено {1}р, {2}з, {3}д. Потеряно {4} лодок.',
+      attack_pyrrhic: 'Пиррова победа над {0}! Украдено {1}р, {2}з, {3}д. Потеряно {4} лодок.',
+      attack_defeat: 'Разгром! Потеряно {0} лодок, украсть не удалось.',
       attack_shielded: 'Атака провалилась — цель под щитом',
+      fleet_select: 'Флот: {0} лодок',
+      confirm_attack_fleet: 'Атаковать {0} с {1} лодками?',
       center_tip: 'Центр',
       world_map_btn: '🗺 Карта мира',
       home_btn: '🏠 Мой остров',
@@ -805,6 +925,44 @@
       build_boat: 'Постройка лодки',
       build_btn: 'Строить',
       boat_built: 'Лодка построена! Флот пополнен.',
+      boats_away_suffix: ' ({0} в рейдах)',
+      boats_breakdown: 'Свободно: {0} · В рейдах: {1} · Лимит: {2}',
+      // Точки захвата
+      capture_btn: 'Захватить',
+      intercept_btn: 'Перехватить',
+      capture_confirm: 'Захватить с {0} лодками? (~{1}с)',
+      intercept_confirm: 'Перехватить захват {0} с {1} лодками?',
+      capture_launched: 'Захват начат! ~{0}с',
+      capture_done: 'Захвачено! +{0} золота, +{1} рома',
+      capture_respawn: 'Восст. через {0}м',
+      capture_by: 'Захватывает {0}',
+      intercept_won: 'Захвачено! {0} потерял {1} лодок.',
+      intercept_fail: 'Перехват провалился! Потеряно {0} лодок.',
+      intercept_defended: '{0} пытался перехватить — отбито! Потеряно {1} лодок.',
+      intercept_lost: '{0} захватил твою точку! Потеряно {1} лодок, +{2} обломков.',
+      // Караваны
+      raids_group_caravan: 'Перехват караванов',
+      raid_caravan: 'Караван #{0}',
+      caravan_boats_prompt: 'Лодок (1–{0}):',
+      caravan_intercept_confirm: 'Перехватить имперский караван с {0} лодками? (~{1} мин, высокий лут, риск потерь)',
+      caravan_launched: 'Перехват каравана начат! ~{0}с',
+      caravan_won: 'Караван перехвачен! +{0} золота, +{1} рома. Потеряно {2} лодок.',
+      caravan_lost: 'Эскорт отбил атаку! Потеряно {0} лодок.',
+      caravan_busy: 'Уже перехватывают',
+      // Активная оборона
+      def_incoming: '⚔️ АТАКА!',
+      def_incoming_meta: 'От {0} | через ~{1}с | {2} лодок',
+      def_cannon: '🔥 Залп пушек',
+      def_cannon_cost: '{0} рома',
+      def_shield: '🛡 Усилить щит',
+      def_shield_cost: '{0} золота',
+      def_merc: '⚓ Нанять наёмников',
+      def_merc_cost: '{0} рома',
+      def_passive: 'Только пассивная оборона',
+      def_activated_cannon: 'Залп произведён! Оборона ×2.5.',
+      def_activated_shield: 'Щит усилен! Кража −20%.',
+      def_activated_mercenary: 'Наёмники наняты! Оборона +25.',
+      def_failed: 'Ошибка: {0}',
     }
   };
 
@@ -924,9 +1082,15 @@
   let worldResourceIslands = []; // [{id, x, y, type, size, depleted_until}]
   let myResourceRaids = [];      // [{islandId, startTime, duration}]
   let resHitZones = [];          // [{id, wx, wy, size}] — обновляется в drawResourceIslands
-  let raidAngles     = new Map();  // startTime → random angle (persistent per raid)
-  let successReturns = [];         // [{angle, startedAt}] — return animations after successful raids
-  let lastRaids      = [];         // snapshot of last non-empty raidsUpdate (used in raidResult)
+  let worldCapturePoints = [];   // [{id, x, y, type, capturer, capturerBoats, captureEta, respawnAt}]
+  let captureHitZones = [];      // [{id, wx, wy}] — обновляется в drawCapturePoints
+  let worldCaravans = [];        // [{id, x, y}] — имперские караваны
+  let myCaravanIntercepts = [];  // [{caravanId, startTime, duration, boats}]
+  let caravanHitZones = [];      // [{id, wx, wy, size}] — обновляется в drawCaravans
+  let raidAngles       = new Map();  // startTime → random angle (persistent per raid)
+  let pendingRaidAngle = null;       // angle assigned optimistically; reused when raidsUpdate arrives
+  let successReturns = [];           // [{angle, startedAt}] — return animations after successful raids
+  let lastRaids      = [];           // snapshot of last non-empty raidsUpdate (used in raidResult)
 
   // ── Assets ────────────────────────────────────
   const imgIsland = new Image();
@@ -998,6 +1162,7 @@
 
   // Balance constants (mirror server)
   const BOAT_BUILD_COST = 80;         // должно совпадать с BOAT_BUILD_COST в server.js
+  const CAPTURE_BASE_TIME_CLIENT = 3 * 60 * 1000; // = CAPTURE_BASE_TIME_MS в server.js
   const TAVERN_BASE_COST = 400;
   const DOCK_BASE_COST = 300;
   const CANNON_BASE_COST_RUM = 300;
@@ -1224,12 +1389,15 @@
     playersArr = data.players || [];
     pvpMissions = data.pvpMissions || [];
     if (data.resourceIslands) worldResourceIslands = data.resourceIslands;
+    if (data.capturePoints)   worldCapturePoints   = data.capturePoints;
+    if (data.caravans)       worldCaravans        = data.caravans;
     // Синхронизируем archi-данные своего игрока из стейта
     const m = me();
     if (m) {
       myArchiRaids    = m.archi_raids    || [];
       myArchiDepleted = m.archi_depleted || {};
       myResourceRaids = m.resource_raids || [];
+      myCaravanIntercepts = m.caravan_intercepts || [];
     }
     updateHUD();
     updatePlayerList();
@@ -1274,10 +1442,15 @@
   socket.on('attackResult', (data) => {
     if (data.ok) {
       const s = data.stolen;
-      playCoin();
-      showToast(t('attack_hit', data.target, s.rum, s.gold, s.wood), 'good');
+      if (data.tier === 'defeat') {
+        showToast(t('attack_defeat', data.boatsLost), 'bad');
+      } else {
+        playCoin();
+        const tierKey = data.tier === 'pyrrhic' ? 'attack_pyrrhic' : 'attack_hit';
+        showToast(t(tierKey, data.target, s.rum, s.gold, s.wood, data.boatsLost), 'good');
+      }
       if (data.levelDropped) showToast(t('island_level_dropped', data.levelDropped), 'info');
-      if (data.targetWiped) showToast(t('target_wiped'), 'info');
+      if (data.targetWiped)  showToast(t('target_wiped'), 'info');
     } else {
       showToast(data.msg || t('attack_shielded'), 'bad');
     }
@@ -1289,7 +1462,11 @@
     const active = new Set(raids.map(r => r.startTime));
     for (const [st] of raidAngles) if (!active.has(st)) raidAngles.delete(st);
     for (const r of raids) {
-      if (!raidAngles.has(r.startTime)) raidAngles.set(r.startTime, Math.random() * Math.PI * 2);
+      if (!raidAngles.has(r.startTime)) {
+        // Reuse the angle from the optimistic push so the boat doesn't jump direction
+        raidAngles.set(r.startTime, pendingRaidAngle ?? Math.random() * Math.PI * 2);
+        pendingRaidAngle = null;
+      }
     }
     // Attach smooth-timing fields so animation interpolates between server ticks
     myRaids = raids.map(r => ({ ...r, receivedAt: now, remainingAtReceive: r.remaining }));
@@ -1316,8 +1493,101 @@
   });
 
   socket.on('attacked', (data) => {
+    closeDefenseModal();  // атака разрешена — закрыть модалку если осталась
     showToast(t('attacked_by', data.by, data.lost.rum, data.lost.gold, data.lost.wood), 'bad');
     if (data.levelDropped) showToast(t('island_level_dropped', data.levelDropped), 'info');
+  });
+
+  // ── Активная оборона ──────────────────────────
+  let _defTimerInterval = null;
+
+  function closeDefenseModal() {
+    const modal = document.getElementById('defense-modal');
+    if (modal) modal.style.display = 'none';
+    if (_defTimerInterval) { clearInterval(_defTimerInterval); _defTimerInterval = null; }
+  }
+
+  socket.on('incomingAttack', (data) => {
+    const modal = document.getElementById('defense-modal');
+    if (!modal) return;
+    const m = me();
+
+    // Заголовок и мета
+    document.getElementById('def-title').textContent = t('def_incoming');
+    document.getElementById('def-meta').textContent =
+      t('def_incoming_meta', data.by, data.eta, data.boatsUsed);
+
+    // Стоимости (зеркало констант сервера)
+    const cannonCost = Math.max(10, Math.floor((m ? m.rum : 0) * 0.12));
+    const shieldCost = 50;
+    const mercCost   = 100;
+
+    document.getElementById('def-cannon-label').textContent = t('def_cannon');
+    document.getElementById('def-cannon-cost').textContent  = t('def_cannon_cost', cannonCost);
+    document.getElementById('def-shield-label').textContent = t('def_shield');
+    document.getElementById('def-shield-cost').textContent  = t('def_shield_cost', shieldCost);
+    document.getElementById('def-merc-label').textContent   = t('def_merc');
+    document.getElementById('def-merc-cost').textContent    = t('def_merc_cost', mercCost);
+    document.getElementById('def-btn-passive').textContent  = t('def_passive');
+
+    document.getElementById('def-btn-cannon').disabled = !m || m.rum < cannonCost;
+    document.getElementById('def-btn-shield').disabled = !m || m.gold < shieldCost;
+    document.getElementById('def-btn-merc').disabled   = !m || m.rum < mercCost;
+
+    // Таймер
+    const timeout  = data.defenseTimeout || 25000;
+    const deadline = Date.now() + timeout;
+    const fill = document.getElementById('def-timer-fill');
+    if (fill) fill.style.width = '100%';
+    if (_defTimerInterval) clearInterval(_defTimerInterval);
+    _defTimerInterval = setInterval(() => {
+      const rem = deadline - Date.now();
+      if (rem <= 0) { closeDefenseModal(); return; }
+      if (fill) fill.style.width = ((rem / timeout) * 100) + '%';
+    }, 200);
+
+    // Обработчики кнопок
+    function doChoice(choice) {
+      socket.emit('activeDefenseChoice', { missionId: data.missionId, choice }, (resp) => {
+        if (resp && resp.ok) showToast(t('def_activated_' + resp.type), 'good');
+        else showToast(t('def_failed', resp ? resp.msg : '?'), 'bad');
+        closeDefenseModal();
+      });
+    }
+    document.getElementById('def-btn-cannon').onclick  = () => doChoice('cannon');
+    document.getElementById('def-btn-shield').onclick  = () => doChoice('shield');
+    document.getElementById('def-btn-merc').onclick    = () => doChoice('mercenary');
+    document.getElementById('def-btn-passive').onclick = closeDefenseModal;
+
+    modal.style.display = 'flex';
+  });
+
+  // ── Захват точек ───────────────────────────────
+  socket.on('capturePoints', (list) => {
+    worldCapturePoints = list || [];
+  });
+
+  socket.on('captureResult', (data) => {
+    playCoin();
+    showToast(t('capture_done', data.gold, data.rum), 'good');
+  });
+
+  socket.on('intercepted', (data) => {
+    if (data.result === 'defended') {
+      showToast(t('intercept_defended', data.by, data.boatsLost), 'good');
+    } else {
+      showToast(t('intercept_lost', data.by, data.boatsLost, data.debris || 0), 'bad');
+    }
+  });
+
+  socket.on('caravanInterceptResult', (data) => {
+    myCaravanIntercepts = (me() || {}).caravan_intercepts || [];
+    if (data.won) {
+      playCoin();
+      showToast(t('caravan_won', data.gold || 0, data.rum || 0, data.boatsLost || 0), 'good');
+    } else {
+      showToast(t('caravan_lost', data.boatsLost || 0), 'bad');
+    }
   });
 
   socket.on('wiped', (data) => {
@@ -1353,7 +1623,9 @@
     hudRum.textContent = formatNum(m.rum);
     hudGold.textContent = formatNum(m.gold);
     hudWood.textContent = formatNum(m.wood);
-    hudBoats.textContent = `${m.boats}/${m.boats_max}`;
+    const deployed = m.boats_deployed || 0;
+    hudBoats.textContent = `${m.boats}/${m.boats_max}` + (deployed > 0 ? t('boats_away_suffix', deployed) : '');
+    hudBoats.title = t('boats_breakdown', m.boats, deployed, m.boats_max);
 
     if (m.is_newbie_shield) {
       hudShield.textContent = t('newbie_shield');
@@ -1393,9 +1665,13 @@
       ].join(' · ');
     }
 
+    const boatsDeployed = m.boats_deployed || 0;
+    const boatsBreakdownEl = document.getElementById('u-boats-breakdown');
+    if (boatsBreakdownEl) boatsBreakdownEl.textContent = t('boats_breakdown', m.boats, boatsDeployed, m.boats_max);
+
     btnUpTavern.disabled = m.rum < Math.floor(TAVERN_BASE_COST * Math.pow(COST_MULT, m.tavern_level - 1));
     btnUpDock.disabled = m.wood < Math.floor(DOCK_BASE_COST * Math.pow(COST_MULT, m.dock_level - 1));
-    btnBuildBoat.disabled = m.boats >= m.boats_max || m.wood < BOAT_BUILD_COST;
+    btnBuildBoat.disabled = (m.boats + boatsDeployed) >= m.boats_max || m.wood < BOAT_BUILD_COST;
     btnUpCannons.disabled = m.rum < Math.floor(CANNON_BASE_COST_RUM * Math.pow(COST_MULT, m.cannon_level)) ||
                             m.wood < Math.floor(CANNON_BASE_COST_WOOD * Math.pow(COST_MULT, m.cannon_level));
     btnUpIsland.disabled = m.rum < Math.floor(1000 * Math.pow(2, m.island_level - 1)) ||
@@ -1477,6 +1753,16 @@
         progress: r.duration ? Math.min(1, (now - r.startTime) / r.duration) : 0
       });
     });
+    (myCaravanIntercepts || []).forEach((r) => {
+      const remaining = Math.max(0, r.startTime + r.duration - now);
+      items.push({
+        type: 'caravan',
+        label: t('raid_caravan', r.caravanId + 1) + ` (${r.boats})`,
+        remaining,
+        duration: r.duration,
+        progress: r.duration ? Math.min(1, (now - r.startTime) / r.duration) : 0
+      });
+    });
 
     if (items.length === 0) {
       raidList.innerHTML = `<div class="raid-empty">${t('no_raids')}</div>`;
@@ -1486,7 +1772,8 @@
     const groups = [
       { key: 'pve', title: t('raids_group_pve') },
       { key: 'archi', title: t('raids_group_archi') },
-      { key: 'resource', title: t('raids_group_resource') }
+      { key: 'resource', title: t('raids_group_resource') },
+      { key: 'caravan', title: t('raids_group_caravan') }
     ];
     let html = '';
     for (const g of groups) {
@@ -1512,7 +1799,7 @@
     myRaids.forEach(r => {
       if (r.remaining > 0) { r.remaining = Math.max(0, r.remaining - 1000); changed = true; }
     });
-    if (changed || (myArchiRaids && myArchiRaids.length > 0) || (myResourceRaids && myResourceRaids.length > 0)) {
+    if (changed || (myArchiRaids && myArchiRaids.length > 0) || (myResourceRaids && myResourceRaids.length > 0) || (myCaravanIntercepts && myCaravanIntercepts.length > 0)) {
       updateRaidPanel();
     }
   }, 1000);
@@ -1527,29 +1814,38 @@
     playerList.innerHTML = others.map(p => {
       const shielded = p.shield_until > Date.now();
       const onlineStr = p.online ? '' : ` ${t('offline')}`;
+      const myBoats = (me() || {}).boats || 0;
+      const myMaxFleet = Math.min(5, (me() || {}).boats_max || 2);
+      const maxSend = Math.min(5, myBoats, myMaxFleet);
       return `<div class="player-row">
         <span class="pl-nick" style="color:${p.color}">${p.nick}${onlineStr}</span>
         <span class="pl-lvl">${t('lvl_short')}.${p.island_level}</span>
         <span class="pl-res">${formatNum(p.rum)}r</span>
         ${shielded ? `<span class="pl-shield">${t('shielded')}</span>` : ''}
-        ${!shielded ? `<button class="pl-attack" data-nick="${p.nick}">${t('raid_btn')}</button>` : ''}
+        ${!shielded && myBoats > 0 ? `
+          <select class="pl-fleet" data-nick="${p.nick}" style="font-size:11px;background:#0f1a28;color:#ffd543;border:1px solid #4a3a2a;border-radius:3px;padding:1px 4px">
+            ${Array.from({length: Math.max(1, maxSend)}, (_,i) => `<option value="${i+1}">${i+1}</option>`).join('')}
+          </select>
+          <button class="pl-attack" data-nick="${p.nick}">${t('raid_btn')}</button>` : ''}
       </div>`;
     }).join('');
 
     playerList.querySelectorAll('.pl-attack').forEach(btn => {
       btn.addEventListener('click', () => {
         const target = btn.getAttribute('data-nick');
-        if (!confirm(t('confirm_attack', target))) return;
-        doAttack(target);
+        const sel = playerList.querySelector(`.pl-fleet[data-nick="${target}"]`);
+        const fleet = sel ? parseInt(sel.value) || 1 : 1;
+        if (!confirm(t('confirm_attack_fleet', target, fleet))) return;
+        doAttack(target, fleet);
       });
     });
   }
 
   // ── Attack helper ─────────────────────────────
-  function doAttack(targetNick) {
-    socket.emit('attackPlayer', { targetNick }, (resp) => {
+  function doAttack(targetNick, fleetSize) {
+    socket.emit('attackPlayer', { targetNick, fleetSize: fleetSize || 1 }, (resp) => {
       if (resp.ok && resp.launched) {
-        showToast(t('attack_launched', resp.eta), 'good');
+        showToast(t('attack_launched', resp.eta, resp.fleetSize || fleetSize || 1), 'good');
       } else {
         showToast(resp.msg, 'bad');
       }
@@ -1626,7 +1922,6 @@
   // ── Клик по ресурсному острову (world mode) ───────────
   function tryHarvestResourceIslandAt(clientX, clientY) {
     if (viewMode !== 'world' || resHitZones.length === 0) return;
-    // world coords: wx = camera.x + clientX (since camera is top-left, no zoom here)
     const W = canvas.width, H = canvas.height;
     const wx = camera.x + (clientX - W / 2) / viewZoom + W / 2;
     const wy = camera.y + (clientY - H / 2) / viewZoom + H / 2;
@@ -1647,8 +1942,99 @@
     }
   }
 
+  // ── Клик по каравану (world mode) ─────────────────────
+  function tryCaravanInterceptAt(clientX, clientY) {
+    if (viewMode !== 'world' || !caravanHitZones.length) return false;
+    const W = canvas.width, H = canvas.height;
+    const wx = camera.x + (clientX - W / 2) / viewZoom + W / 2;
+    const wy = camera.y + (clientY - H / 2) / viewZoom + H / 2;
+    for (const z of caravanHitZones) {
+      if (Math.hypot(wx - z.wx, wy - z.wy) > z.size) continue;
+
+      const m = me();
+      const myBoats = (m || {}).boats || 0;
+      if (myBoats < 1) { showToast(t('no_raids'), 'bad'); return true; }
+      if ((myCaravanIntercepts || []).some(ci => ci.caravanId === z.id)) { showToast(t('caravan_busy'), 'info'); return true; }
+
+      const maxSend = Math.min(5, myBoats);
+      const boatsStr = prompt(t('caravan_boats_prompt', maxSend), '1');
+      const boats = Math.max(1, Math.min(maxSend, parseInt(boatsStr, 10) || 1));
+      if (!confirm(t('caravan_intercept_confirm', boats, '2–5'))) return true;
+
+      socket.emit('interceptCaravan', { caravanId: z.id, boats }, (resp) => {
+        if (resp.ok) {
+          playBoatSend();
+          showToast(t('caravan_launched', resp.eta), 'good');
+          myCaravanIntercepts.push({ caravanId: z.id, startTime: Date.now(), duration: resp.duration, boats });
+          updateRaidPanel();
+        } else {
+          showToast(resp.msg || t('caravan_busy'), 'bad');
+        }
+      });
+      return true;
+    }
+    return false;
+  }
+
+  // ── Клик по точке захвата (world mode) ────────────────
+  function tryCapturePointAt(clientX, clientY) {
+    if (viewMode !== 'world' || captureHitZones.length === 0) return false;
+    const W = canvas.width, H = canvas.height;
+    const wx = camera.x + (clientX - W / 2) / viewZoom + W / 2;
+    const wy = camera.y + (clientY - H / 2) / viewZoom + H / 2;
+    for (const z of captureHitZones) {
+      const dist = Math.hypot(wx - z.wx, wy - z.wy);
+      if (dist > z.size) continue;
+
+      const cp = worldCapturePoints.find(c => c.id === z.id);
+      if (!cp) continue;
+
+      const myBoats = (me() || {}).boats || 0;
+      const maxSend = Math.min(3, myBoats);
+      if (maxSend < 1) { showToast('Need at least 1 boat', 'bad'); return true; }
+
+      if (cp.respawnAt > Date.now()) {
+        const minsLeft = Math.ceil((cp.respawnAt - Date.now()) / 60000);
+        showToast(t('capture_respawn', minsLeft), 'info');
+        return true;
+      }
+
+      // Ask how many boats
+      const boats = Math.max(1, Math.min(maxSend, parseInt(prompt(`${cp.capturer ? t('intercept_btn') : t('capture_btn')} (1-${maxSend} boats):`, '1')) || 1));
+      const isIntercept = cp.capturer && cp.capturer !== myNick;
+      const eta = Math.round(CAPTURE_BASE_TIME_CLIENT / boats / 1000);
+
+      if (isIntercept) {
+        if (!confirm(t('intercept_confirm', cp.capturer, boats))) return true;
+        socket.emit('launchIntercept', { pointId: z.id, boats }, (resp) => {
+          if (resp.ok) {
+            playBoatSend();
+            if (resp.won) showToast(t('intercept_won', cp.capturer, resp.boatsLost), 'good');
+            else showToast(t('intercept_fail', resp.boatsLost), 'bad');
+          } else {
+            showToast(resp.msg, 'bad');
+          }
+        });
+      } else {
+        if (!confirm(t('capture_confirm', boats, eta))) return true;
+        socket.emit('launchCapture', { pointId: z.id, boats }, (resp) => {
+          if (resp.ok) {
+            playBoatSend();
+            showToast(t('capture_launched', resp.eta), 'good');
+          } else {
+            showToast(resp.msg, 'bad');
+          }
+        });
+      }
+      return true;
+    }
+    return false;
+  }
+
   canvas.addEventListener('click', (e) => {
     if (clickWasDrag) { clickWasDrag = false; return; }
+    if (tryCapturePointAt(e.clientX, e.clientY)) return;
+    if (tryCaravanInterceptAt(e.clientX, e.clientY)) return;
     tryHarvestArchiAt(e.clientX, e.clientY);
     tryHarvestResourceIslandAt(e.clientX, e.clientY);
   });
@@ -1657,6 +2043,8 @@
     if (isDragging) return;
     if (e.changedTouches.length > 0) {
       const touch = e.changedTouches[0];
+      if (tryCapturePointAt(touch.clientX, touch.clientY)) return;
+      if (tryCaravanInterceptAt(touch.clientX, touch.clientY)) return;
       tryHarvestArchiAt(touch.clientX, touch.clientY);
       tryHarvestResourceIslandAt(touch.clientX, touch.clientY);
     }
@@ -1764,8 +2152,8 @@
         playBoatSend();
         showToast(t('boat_sent', min), 'good');
         const sentAt = Date.now();
-        const sentAngle = Math.random() * Math.PI * 2;
-        raidAngles.set(sentAt, sentAngle);
+        pendingRaidAngle = Math.random() * Math.PI * 2;
+        raidAngles.set(sentAt, pendingRaidAngle); // for the optimistic entry only
         myRaids.push({
           startTime: sentAt,
           duration: resp.duration,
@@ -1847,9 +2235,11 @@
       }
     }
 
-    // Ресурсные острова, лодки в рейд на них и PvP миссии только в world mode
+    // Ресурсные острова, караваны, точки захвата, лодки в рейд и PvP миссии только в world mode
     if (viewMode === 'world') {
       drawResourceIslands();
+      drawCaravans();
+      drawCapturePoints();
       drawResourceRaidBoats();
       drawPvpMissions();
     }
@@ -2235,10 +2625,14 @@
       const bx = startX + t * (farX - startX);
       const by = startY + t * (farY - startY);
 
+      // Fade out in the last 25% of departure
+      const fadeStart = 0.75;
+      const alpha = t < fadeStart ? 1.0 : 1.0 - (t - fadeStart) / (1.0 - fadeStart);
+
       const remainMin = Math.floor(smoothRemaining / 60000);
       const remainSec = Math.floor((smoothRemaining % 60000) / 1000);
       drawRaidShipAt(bx, by, cosA, sinA, false,
-        `${remainMin}:${String(remainSec).padStart(2, '0')}`);
+        `${remainMin}:${String(remainSec).padStart(2, '0')}`, alpha);
     }
 
     // ── Return phase: only for raids that succeeded ────────────────────────
@@ -2257,15 +2651,21 @@
       const bx = farX + t * (startX - farX);
       const by = farY + t * (startY - farY);
 
-      drawRaidShipAt(bx, by, cosA, sinA, true, null);
+      // Fade in during the first 25% of return
+      const fadeEnd = 0.25;
+      const alpha = t < fadeEnd ? t / fadeEnd : 1.0;
+
+      drawRaidShipAt(bx, by, cosA, sinA, true, null, alpha);
       return true;
     });
   }
 
   // Shared renderer for both departure and return phases
-  function drawRaidShipAt(bx, by, cosA, sinA, isReturning, label) {
+  function drawRaidShipAt(bx, by, cosA, sinA, isReturning, label, alpha = 1) {
     // Guard: non-finite coordinates crash createLinearGradient and kill the draw loop
     if (!isFinite(bx) || !isFinite(by)) return;
+    ctx.save();
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
     const bob       = Math.sin(animFrame * 0.06) * 2;
     const flipRight = isReturning ? cosA < 0 : cosA >= 0;
     // Wake trail — isolate canvas state changes with save/restore
@@ -2292,6 +2692,7 @@
       ctx.textBaseline = 'alphabetic';
       ctx.fillText(label, bx, by - 16);
     }
+    ctx.restore(); // restore globalAlpha
   }
 
   function drawInfoTextAt(p, cx, cy) {
@@ -2422,6 +2823,137 @@
 
       // Register hit zone
       resHitZones.push({ id: isl.id, wx: isl.x, wy: isl.y, size: r + 8 });
+    }
+  }
+
+  // ── Точки захвата (PvP) ─────────────────────────────────
+  function drawCapturePoints() {
+    if (!worldCapturePoints || worldCapturePoints.length === 0) return;
+    captureHitZones = [];
+    const now = Date.now();
+    const zoom = viewZoom;
+    const W = canvas.width, H = canvas.height;
+    const halfVW = W / (2 * zoom);
+    const halfVH = H / (2 * zoom);
+    const margin = 60;
+
+    for (const cp of worldCapturePoints) {
+      // Та же система координат, что и drawResourceIslands (camera space + transform)
+      const sx = cp.x - camera.x;
+      const sy = cp.y - camera.y;
+      if (sx < W / 2 - halfVW - margin || sx > W / 2 + halfVW + margin ||
+          sy < H / 2 - halfVH - margin || sy > H / 2 + halfVH + margin) continue;
+
+      const r = 18;
+      const available = cp.respawnAt <= now;
+      const capturing = cp.capturer !== null;
+
+      ctx.save();
+      ctx.globalAlpha = available ? 1 : 0.45;
+
+      // Outer ring — gold/amber pulse for available, red for capturing
+      const pulse = 0.7 + 0.3 * Math.sin(animFrame * 0.08 + cp.id);
+      ctx.strokeStyle = capturing ? '#e74c3c' : (available ? '#f1c40f' : '#666');
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r + 3, 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Body — skull icon placeholder (filled circle with cross)
+      ctx.fillStyle = capturing ? '#3a0f0f' : (available ? '#1a1200' : '#1a1a1a');
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Icon
+      ctx.fillStyle = capturing ? '#e74c3c' : (available ? '#f1c40f' : '#888');
+      ctx.font = `bold ${Math.round(r * 1.1)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(available ? '☠' : '⏳', sx, sy);
+
+      // Capture progress arc
+      if (capturing && cp.captureEta) {
+        const totalTime = cp.captureEta - (cp.captureEta - 180000 / (cp.capturerBoats || 1)); // approx
+        const elapsed = now - (cp.captureEta - CAPTURE_BASE_TIME_CLIENT / (cp.capturerBoats || 1));
+        const prog = Math.min(1, Math.max(0, 1 - (cp.captureEta - now) / (CAPTURE_BASE_TIME_CLIENT / (cp.capturerBoats || 1))));
+        ctx.strokeStyle = cp.capturer === myNick ? '#2ecc71' : '#e74c3c';
+        ctx.lineWidth = 3;
+        ctx.beginPath();
+        ctx.arc(sx, sy, r + 7, -Math.PI / 2, -Math.PI / 2 + prog * Math.PI * 2);
+        ctx.stroke();
+
+        // Label
+        ctx.globalAlpha = 0.9;
+        ctx.fillStyle = '#fff';
+        ctx.font = `10px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        const secLeft = Math.max(0, Math.ceil((cp.captureEta - now) / 1000));
+        ctx.fillText(t('capture_by', cp.capturer).slice(0, 14) + ` ${secLeft}s`, sx, sy - r - 10);
+      } else if (!available) {
+        const minsLeft = Math.ceil((cp.respawnAt - now) / 60000);
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = '#aaa';
+        ctx.font = `10px monospace`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(t('capture_respawn', minsLeft), sx, sy - r - 6);
+      }
+
+      // Type label below
+      if (available) {
+        ctx.globalAlpha = 0.7;
+        ctx.fillStyle = cp.type === 'gold' ? '#f1c40f' : '#e67e22';
+        ctx.font = `bold 9px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.fillText(cp.type.toUpperCase(), sx, sy + r + 4);
+      }
+
+      ctx.restore();
+      captureHitZones.push({ id: cp.id, wx: cp.x, wy: cp.y, size: r + 10 });
+    }
+  }
+
+  // ── Имперские караваны (world mode) ────────────────────
+  function drawCaravans() {
+    if (!worldCaravans || worldCaravans.length === 0) return;
+    caravanHitZones = [];
+    const W = canvas.width, H = canvas.height;
+    const zoom = viewZoom;
+    const halfVW = W / (2 * zoom);
+    const halfVH = H / (2 * zoom);
+    const margin = 50;
+
+    for (const c of worldCaravans) {
+      const sx = c.x - camera.x;
+      const sy = c.y - camera.y;
+      if (sx < W / 2 - halfVW - margin || sx > W / 2 + halfVW + margin ||
+          sy < H / 2 - halfVH - margin || sy > H / 2 + halfVH + margin) continue;
+
+      const r = 20;
+      const isIntercepting = (myCaravanIntercepts || []).some(ci => ci.caravanId === c.id);
+
+      ctx.save();
+      ctx.globalAlpha = isIntercepting ? 0.6 : 1;
+
+      ctx.fillStyle = '#2c1810';
+      ctx.strokeStyle = '#8b6914';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(sx, sy, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#c9a227';
+      ctx.font = `bold ${Math.round(r * 1.2)}px sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('⛵', sx, sy);
+
+      ctx.restore();
+      caravanHitZones.push({ id: c.id, wx: c.x, wy: c.y, size: r + 12 });
     }
   }
 

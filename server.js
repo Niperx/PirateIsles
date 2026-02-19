@@ -78,9 +78,9 @@ const WIPE_ATTACKS_MAX = 5;                // случайное порог 3–
 const WIPE_LEVEL_DROP_MIN = 1;
 const WIPE_LEVEL_DROP_MAX = 2;             // за атаку -1 или -2 уровня
 const ISLAND_LEVEL_MAX = 15;
-const SHIELD_NEWBIE_HOURS = 2;
-const SHIELD_NEWBIE_MAX_LEVEL = 5;
-const SHIELD_POST_ATTACK_HOURS = 1;
+const SHIELD_NEWBIE_HOURS = 0;     // 0 = новичковая защита по времени отключена (для тестирования)
+const SHIELD_NEWBIE_MAX_LEVEL = 0; // 0 = новичковая защита по уровню отключена (для тестирования)
+const SHIELD_POST_ATTACK_HOURS = 0;  // 0 = щит после атаки отключён (для тестирования)
 const SHIELD_POST_ATTACK_BREACH_CHANCE = 0.50; // усиленный рейд пробивает с 50%
 const SHIELD_BUY_COST_PCT = 0.10;          // 10% текущих ресурсов
 const SHIELD_BUY_DURATION_MS = 60 * 60 * 1000; // 1 час
@@ -90,6 +90,15 @@ const DEBRIS_RATIO = 0.40;
 const DEBRIS_ATTACKER_SHARE = 0.70;
 const DEBRIS_DEFENDER_SHARE = 0.30;
 const PVP_COOLDOWN_MS = 2 * 60 * 1000;    // 2 мин после атаки (на любую цель)
+
+// Активная оборона
+const ACTIVE_DEFENSE_TIMEOUT_MS = 25 * 1000;       // 25 сек окно выбора
+const ACTIVE_DEFENSE_CANNON_RUM_PCT = 0.12;         // 12% рома за залп пушек
+const ACTIVE_DEFENSE_CANNON_DEF_MULT = 2.5;         // ×2.5 к defense power
+const ACTIVE_DEFENSE_SHIELD_GOLD_COST = 50;         // фиксированная стоимость в золоте
+const ACTIVE_DEFENSE_SHIELD_STEAL_REDUCE = 0.20;    // -20% к effectiveSteal (щит)
+const ACTIVE_DEFENSE_MERC_RUM_COST = 100;           // ром за наёмников
+const ACTIVE_DEFENSE_MERC_DEF_BONUS = 25;           // +25 к defensePower от наёмников
 
 // Оффлайн
 const OFFLINE_RATE = 0.40;              // 40% от онлайн-скорости
@@ -144,11 +153,39 @@ const RESOURCE_LOOT = {
   rum:  { resource: 'rum',  min: 150, max: 400 },
 };
 
+// ── Точки захвата (PvP конкуренция) ─────────────────────
+const CAPTURE_POINT_COUNT   = 8;
+const CAPTURE_BASE_TIME_MS  = 3 * 60 * 1000;  // 3 мин за 1 лодку; 1 лодка = полный таймер
+const CAPTURE_RESPAWN_MS    = 8 * 60 * 1000;  // 8 мин до следующего лута
+const CAPTURE_MAX_BOATS     = 3;              // макс лодок на захват
+const CAPTURE_LOOT = {
+  gold: { min: 120, max: 320 },
+  rum:  { min:  80, max: 220 },
+};
+const INTERCEPT_LOSS_PCT_MIN = 0.40;
+const INTERCEPT_LOSS_PCT_MAX = 0.60;
+
+// ── Имперские караваны (движущиеся NPC) ───────────────────
+const CARAVAN_COUNT = 4;
+const CARAVAN_TICK_MS = 10000;                    // 10 сек — тик движения
+const CARAVAN_SPEED = 12;                          // world-units за тик
+const CARAVAN_INTERCEPT_MIN_MS = 2 * 60 * 1000;    // 2 мин минимум в пути
+const CARAVAN_INTERCEPT_MAX_MS = 5 * 60 * 1000;    // 5 мин максимум
+const CARAVAN_NPC_BOATS = 3;                       // сила эскорта каравана (Fleet vs NPC)
+const CARAVAN_LOOT = { gold: { min: 180, max: 450 }, rum: { min: 120, max: 320 } };
+const CARAVAN_LOSS_CHANCE = 0.15;                  // 15% шанс потери лодки при победе; при поражении — 60–80%
+
 const players = {};       // ключ — nick
 const activeRaids = [];   // { playerId, startTime, duration, lootRoll }
 const pvpMissions = [];   // { id, owner, targetNick, x, y, tx, ty, speed, ownerColor }
 const resourceIslands = []; // { id, x, y, type, size, depleted_until }
 let resourceIslandsDirty = false; // флаг: нужно ли сохранить острова в Redis после деплеции
+// capturePoints: { id, x, y, capturer, capturerBoats, captureEta, respawnAt }
+const capturePoints = [];
+// caravans: { id, x, y, routeIndex, route: [{x,y},...] } — движутся по маршруту
+const caravans = [];
+// caravanIntercepts: { id, owner, caravanId, boats, startTime, duration }
+const caravanIntercepts = [];
 
 // ── Утилиты ──────────────────────────────────────────────
 function randInt(min, max) {
@@ -254,6 +291,104 @@ function getResourceIslandsPublic() {
   }));
 }
 
+// Сколько лодок сейчас в миссиях (PvE, архипелаг, ресурсы, PvP, захват, караваны)
+function boatsInMissions(nick) {
+  const p = players[nick];
+  if (!p) return 0;
+  const pve    = activeRaids.filter(r => r.playerId === nick).length;
+  const archi  = (p.archi_raids    || []).length;
+  const res    = (p.resource_raids || []).length;
+  const pvp    = pvpMissions.filter(m => m.owner === nick).reduce((s, m) => s + (m.boatsUsed || 1), 0);
+  const cap_pt = capturePoints.filter(cp => cp.capturer === nick).reduce((s, cp) => s + (cp.capturerBoats || 0), 0);
+  const car    = caravanIntercepts.filter(ci => ci.owner === nick).reduce((s, ci) => s + ci.boats, 0);
+  return pve + archi + res + pvp + cap_pt + car;
+}
+
+function generateCapturePoints() {
+  const types = ['gold', 'rum', 'gold', 'rum', 'gold', 'rum', 'gold', 'rum'];
+  const margin = 200;
+  for (let i = 0; i < CAPTURE_POINT_COUNT; i++) {
+    capturePoints.push({
+      id: i,
+      x: randInt(margin, MAP_W - margin),
+      y: randInt(margin, MAP_H - margin),
+      type: types[i % types.length],
+      capturer: null,
+      capturerBoats: 0,
+      captureEta: null,
+      respawnAt: 0     // 0 = доступно сейчас
+    });
+  }
+  console.log(`[WORLD] Generated ${capturePoints.length} capture points`);
+}
+
+function getCapturePointsPublic() {
+  return capturePoints.map(cp => ({
+    id: cp.id, x: cp.x, y: cp.y, type: cp.type,
+    capturer: cp.capturer,
+    capturerBoats: cp.capturerBoats,
+    captureEta: cp.captureEta,
+    respawnAt: cp.respawnAt
+  }));
+}
+
+// Генерация караванов: маршрут — прямоугольник по карте
+function generateCaravans() {
+  const margin = 250;
+  for (let i = 0; i < CARAVAN_COUNT; i++) {
+    const w = margin + (i % 3) * (MAP_W - 2 * margin) / 3;
+    const h = margin + (Math.floor(i / 2) % 2) * (MAP_H - 2 * margin) / 2;
+    const route = [
+      { x: w, y: h },
+      { x: Math.min(MAP_W - margin, w + 400), y: h },
+      { x: Math.min(MAP_W - margin, w + 400), y: Math.min(MAP_H - margin, h + 350) },
+      { x: w, y: Math.min(MAP_H - margin, h + 350) }
+    ];
+    caravans.push({
+      id: i,
+      x: route[0].x,
+      y: route[0].y,
+      routeIndex: 0,
+      route
+    });
+  }
+  console.log(`[WORLD] Generated ${caravans.length} imperial caravans`);
+}
+
+function getCaravansPublic() {
+  return caravans.map(c => ({ id: c.id, x: Math.round(c.x), y: Math.round(c.y) }));
+}
+
+// Fleet vs NPC (караван): игрок vs фиксированная сила эскорта
+function resolveCaravanBattle(playerBoats, npcBoats) {
+  const pPower = playerBoats * (0.7 + Math.random() * 0.6);
+  const nPower = npcBoats * (0.7 + Math.random() * 0.6);
+  if (pPower >= nPower) {
+    const playerLost = Math.min(playerBoats - 1, Math.round(playerBoats * (1 - pPower / (pPower + nPower)) * 0.9));
+    return { winner: 'player', playerLost: Math.max(0, playerLost) };
+  } else {
+    const lossPct = 0.60 + Math.random() * 0.25;
+    const playerLost = Math.min(playerBoats, Math.max(1, Math.round(playerBoats * lossPct)));
+    return { winner: 'npc', playerLost };
+  }
+}
+
+// Fleet vs Fleet симуляция (для захватов/перехватов)
+function resolveFleetBattle(aBoats, bBoats) {
+  // Возвращает { winner: 'a'|'b', aLost, bLost }
+  const aPower = aBoats * (0.7 + Math.random() * 0.6);
+  const bPower = bBoats * (0.7 + Math.random() * 0.6);
+  if (aPower >= bPower) {
+    const bLost = Math.min(bBoats, Math.round(bBoats * (INTERCEPT_LOSS_PCT_MIN + Math.random() * (INTERCEPT_LOSS_PCT_MAX - INTERCEPT_LOSS_PCT_MIN))));
+    const aLost = Math.min(aBoats - 1, Math.round(aBoats * (1 - aPower / (aPower + bPower)) * 0.8));
+    return { winner: 'a', aLost: Math.max(0, aLost), bLost };
+  } else {
+    const aLost = Math.min(aBoats, Math.round(aBoats * (INTERCEPT_LOSS_PCT_MIN + Math.random() * (INTERCEPT_LOSS_PCT_MAX - INTERCEPT_LOSS_PCT_MIN))));
+    const bLost = Math.min(bBoats - 1, Math.round(bBoats * (1 - bPower / (aPower + bPower)) * 0.8));
+    return { winner: 'b', aLost, bLost: Math.max(0, bLost) };
+  }
+}
+
 function boatCapacity(dockLevel) {
   return BASE_BOAT_CAPACITY + (dockLevel - 1) * BOATS_PER_DOCK_LVL;
 }
@@ -285,10 +420,10 @@ function rumRate(player) {
 // Щит новичка: первые 2 ч ИЛИ до lvl 5 ИЛИ до первой атаки на другого (что раньше)
 function isNewbieShield(player) {
   if (!player) return false;
+  if (SHIELD_NEWBIE_HOURS === 0 && SHIELD_NEWBIE_MAX_LEVEL === 0) return false;
   const twoHours = SHIELD_NEWBIE_HOURS * 3600 * 1000;
   if (Date.now() - player.created_at < twoHours) return true;
   if ((player.island_level || 0) < SHIELD_NEWBIE_MAX_LEVEL) return true;
-  if (!player.has_attacked_anyone) return true;
   return false;
 }
 
@@ -296,6 +431,7 @@ function isNewbieShield(player) {
 function isTargetShielded(target, enhancedRaid) {
   if (!target) return true;
   if (isNewbieShield(target)) return true;
+  if (SHIELD_POST_ATTACK_HOURS === 0) return false;
   if (target.shield_until <= Date.now()) return false;
   if (enhancedRaid && Math.random() < SHIELD_POST_ATTACK_BREACH_CHANCE) return false;
   return true;
@@ -604,10 +740,10 @@ function createPlayer(nick, passwordHash = null) {
 // Щит новичка: первые 2ч ИЛИ до lvl 5 ИЛИ до первой атаки на другого (что раньше)
 function isNewbieShielded(p) {
   if (!p) return false;
+  if (SHIELD_NEWBIE_HOURS === 0 && SHIELD_NEWBIE_MAX_LEVEL === 0) return false;
   const now = Date.now();
   if (now < p.created_at + SHIELD_NEWBIE_HOURS * 3600 * 1000) return true;
   if ((p.island_level || 0) < SHIELD_NEWBIE_MAX_LEVEL) return true;
-  if (!p.has_attacked_anyone) return true;
   return false;
 }
 
@@ -648,6 +784,7 @@ function getPlayerPublic(id) {
     cannon_level: p.cannon_level,
     boats: p.boats,
     boats_max: boatCapacity(p.dock_level),
+    boats_deployed: boatsInMissions(id),
     shield_until: p.shield_until,
     shield_cooldown_until: p.shield_cooldown_until || 0,
     has_attacked_anyone: p.has_attacked_anyone,
@@ -667,6 +804,9 @@ function getPlayerPublic(id) {
     archi_depleted: p.archi_depleted || {},
     resource_raids: (p.resource_raids || []).map(r => ({
       islandId: r.islandId, startTime: r.startTime, duration: r.duration
+    })),
+    caravan_intercepts: caravanIntercepts.filter(ci => ci.owner === id).map(ci => ({
+      caravanId: ci.caravanId, startTime: ci.startTime, duration: ci.duration, boats: ci.boats
     })),
     wipe_state: p.wipe_state || { threshold: WIPE_ATTACKS_MIN, count: 0 }
   };
@@ -690,7 +830,14 @@ function getStatePayload() {
   for (const id in players) {
     list.push(getPlayerPublic(id));
   }
-  return { players: list, pvpMissions: getPvpMissionsPublic(), resourceIslands: getResourceIslandsPublic(), timestamp: Date.now() };
+  return {
+    players: list,
+    pvpMissions: getPvpMissionsPublic(),
+    resourceIslands: getResourceIslandsPublic(),
+    capturePoints: getCapturePointsPublic(),
+    caravans: getCaravansPublic(),
+    timestamp: Date.now()
+  };
 }
 
 // ── Wipe: сброс острова, пассивки переносятся, +5–10% wipe_boost ─────────
@@ -737,52 +884,95 @@ function wipePlayer(target, attackerNick) {
 // ── Resolve PvP mission по прилёту ───────────────────────
 function resolvePvpAttack(m) {
   const attacker = players[m.owner];
-  const target = players[m.targetNick];
-
+  const target   = players[m.targetNick];
   const boatsUsed = m.boatsUsed || PVP_BOATS_REQUIRED;
-  if (attacker) {
-    const cannonChance = PVP_CANNON_LOSS_CHANCE_MIN + Math.random() * (PVP_CANNON_LOSS_CHANCE_MAX - PVP_CANNON_LOSS_CHANCE_MIN);
-    const lost = Math.random() < cannonChance ? 1 : 0;
-    attacker.boats = Math.min(attacker.boats + Math.max(0, boatsUsed - lost), boatCapacity(attacker.dock_level));
-  }
 
+  // Цель отключилась — вернуть весь флот
   if (!target) {
-    if (attacker) io.to(m.owner).emit('attackResult', { ok: false, msg: 'Target not found' });
+    if (attacker) {
+      attacker.boats = Math.min(attacker.boats + boatsUsed, boatCapacity(attacker.dock_level));
+      io.to(m.owner).emit('attackResult', { ok: false, msg: 'Target not found' });
+    }
     return;
   }
 
-  // Щит: новичок — полный; иначе при полёте мог включиться; усиленный рейд может пробить (50%)
-  if (isTargetShielded(target, !!m.enhancedRaid)) {
-    if (attacker) io.to(m.owner).emit('attackResult', { ok: false, msg: 'Target is shielded' });
+  // Щит: усиленный флот (4+ лодок) пробивает с 50%
+  const isEnhanced = boatsUsed >= ENHANCED_RAID_BOATS;
+  if (isTargetShielded(target, isEnhanced)) {
+    if (attacker) {
+      attacker.boats = Math.min(attacker.boats + boatsUsed, boatCapacity(attacker.dock_level));
+      io.to(m.owner).emit('attackResult', { ok: false, msg: 'Target is shielded' });
+    }
     return;
   }
 
-  const attackPower = (attacker ? attacker.boats * 10 + attacker.island_level * 5 : 10);
-  const defensePower = target.cannon_level * 15 + target.island_level * 3;
-  const defenseReduction = Math.min(0.5, defensePower / (attackPower + defensePower + 1));
-  const baseSteal = PVP_STEAL_BASE_MIN + Math.random() * (PVP_STEAL_BASE_MAX - PVP_STEAL_BASE_MIN);
-  const pvpStealPct = (attacker && (attacker.passives || {}).pvp_steal) ? attacker.passives.pvp_steal : 0;
-  const stealPercent = Math.min(0.95, baseSteal + pvpStealPct / 100);
-  const effectiveSteal = stealPercent * (1 - defenseReduction);
+  // ── Симуляция боя (survivorship) ────────────────────────
+  // attackPower зависит от кол-ва отправленных лодок, не от текущего fleet
+  const attackPower = boatsUsed * 10 + ((attacker ? attacker.island_level : 1) * 5);
+  let defensePower  = target.cannon_level * 15 + target.island_level * 3;
 
-  const stolenRum  = Math.floor(target.rum  * effectiveSteal);
-  const stolenGold = Math.floor(target.gold * effectiveSteal);
-  const stolenWood = Math.floor(target.wood * effectiveSteal);
+  // Активная оборона
+  const dm = m.defenseModifier;
+  if (dm) {
+    if (dm.type === 'cannon')    defensePower *= dm.defMult;
+    if (dm.type === 'mercenary') defensePower += dm.defBonus;
+  }
+
+  // % выживших = (1 − defence_ratio) ± шум 15%
+  const baseRatio   = defensePower / (attackPower + defensePower + 1);
+  const noise       = (Math.random() - 0.5) * 0.30;
+  const survivorPct = Math.max(0, Math.min(1, (1 - baseRatio) + noise));
+
+  // Три порога исхода
+  let stealPercent, boatLossPct, tier;
+  if (survivorPct >= 0.70) {
+    tier         = 'victory';
+    stealPercent = 0.30 + Math.random() * 0.20;   // 30–50%
+    boatLossPct  = 1 - survivorPct;
+  } else if (survivorPct >= 0.40) {
+    tier         = 'pyrrhic';
+    stealPercent = 0.10 + Math.random() * 0.20;   // 10–30%
+    boatLossPct  = 1 - survivorPct;
+  } else {
+    tier         = 'defeat';
+    stealPercent = 0;
+    boatLossPct  = 0.70 + Math.random() * 0.30;   // 70–100%
+  }
+
+  // Пассивный бонус pvp_steal (только при победе/пирровой)
+  if (tier !== 'defeat') {
+    const pvpStealBonus = (attacker && (attacker.passives || {}).pvp_steal) ? attacker.passives.pvp_steal / 100 : 0;
+    stealPercent = Math.min(0.95, stealPercent + pvpStealBonus);
+    if (dm && dm.type === 'shield') stealPercent = Math.max(0, stealPercent - dm.stealReduce);
+  }
+
+  // Возврат лодок
+  const boatsLost     = Math.min(boatsUsed, Math.round(boatsUsed * boatLossPct));
+  const boatsReturned = boatsUsed - boatsLost;
+  if (attacker) {
+    attacker.boats = Math.min(attacker.boats + boatsReturned, boatCapacity(attacker.dock_level));
+  }
+
+  const stolenRum  = Math.floor(target.rum  * stealPercent);
+  const stolenGold = Math.floor(target.gold * stealPercent);
+  const stolenWood = Math.floor(target.wood * stealPercent);
   const totalStolen = stolenRum + stolenGold + stolenWood;
 
   const debrisTotal    = Math.floor(totalStolen * DEBRIS_RATIO);
   const attackerDebris = Math.floor(debrisTotal * DEBRIS_ATTACKER_SHARE);
   const defenderDebris = Math.floor(debrisTotal * DEBRIS_DEFENDER_SHARE);
 
-  if (attacker) {
+  if (attacker && tier !== 'defeat') {
     const safe = (totalStolen || 1);
     attacker.rum  += stolenRum  - Math.floor(stolenRum  * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenRum  / safe));
     attacker.gold += stolenGold - Math.floor(stolenGold * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenGold / safe));
     attacker.wood += stolenWood - Math.floor(stolenWood * DEBRIS_RATIO) + Math.floor(attackerDebris * (stolenWood / safe));
     const ap = attacker.passives || defaultPassives();
     ap.pvp_steal = (ap.pvp_steal || 0) + PVP_STEAL_PER_WIN_PCT;
-    ap.pvp_wins = (ap.pvp_wins || 0) + 1;
+    ap.pvp_wins  = (ap.pvp_wins  || 0) + 1;
     attacker.passives = ap;
+    persist(m.owner);
+  } else if (attacker) {
     persist(m.owner);
   }
 
@@ -808,6 +998,9 @@ function resolvePvpAttack(m) {
     io.to(m.owner).emit('attackResult', {
       ok: true,
       target: m.targetNick,
+      tier,
+      boatsLost,
+      boatsReturned,
       stolen: { rum: stolenRum, gold: stolenGold, wood: stolenWood },
       totalStolen,
       debris: debrisTotal,
@@ -826,7 +1019,8 @@ function resolvePvpAttack(m) {
     debrisGold: defenderDebris,
     levelDropped,
     islandLevel: target.island_level,
-    wiped: didWipe
+    wiped: didWipe,
+    defenseUsed: dm ? dm.type : null
   });
 
   io.emit('chat', {
@@ -1027,7 +1221,110 @@ setInterval(() => {
     resourceIslandsDirty = false;
     saveResourceIslandsToRedis().catch(err => console.warn('[REDIS] resourceIslands save error:', err.message));
   }
+
+  // ── Проверка завершения захватов ───────────────────────
+  const nowC = Date.now();
+  let captureChanged = false;
+  for (const cp of capturePoints) {
+    if (!cp.capturer || !cp.captureEta) continue;
+    if (nowC < cp.captureEta) continue;
+
+    // Захват завершён — выдать лут
+    const winner = players[cp.capturer];
+    const lootGold = randInt(CAPTURE_LOOT.gold.min, CAPTURE_LOOT.gold.max);
+    const lootRum  = randInt(CAPTURE_LOOT.rum.min,  CAPTURE_LOOT.rum.max);
+
+    if (winner) {
+      winner.gold += lootGold;
+      winner.rum  += lootRum;
+      persist(cp.capturer);
+      io.to(cp.capturer).emit('captureResult', {
+        pointId: cp.id,
+        gold: lootGold,
+        rum: lootRum
+      });
+    }
+
+    io.emit('chat', {
+      from: 'Capture',
+      text: `${cp.capturer} captured a plunder spot! +${lootGold} gold, +${lootRum} rum`
+    });
+    console.log(`[CAPTURE] Point ${cp.id} captured by ${cp.capturer}: +${lootGold}g +${lootRum}r`);
+
+    cp.capturer = null;
+    cp.capturerBoats = 0;
+    cp.captureEta = null;
+    cp.respawnAt = nowC + CAPTURE_RESPAWN_MS;
+    captureChanged = true;
+  }
+  if (captureChanged) io.emit('capturePoints', getCapturePointsPublic());
+
+  // ── Проверка перехватов караванов ──────────────────────
+  const nowCar = Date.now();
+  for (let i = caravanIntercepts.length - 1; i >= 0; i--) {
+    const ci = caravanIntercepts[i];
+    if (nowCar < ci.startTime + ci.duration) continue;
+
+    const p = players[ci.owner];
+    const battle = resolveCaravanBattle(ci.boats, CARAVAN_NPC_BOATS);
+    const boatsReturned = ci.boats - battle.playerLost;
+
+    if (battle.winner === 'player') {
+      const lootGold = randInt(CARAVAN_LOOT.gold.min, CARAVAN_LOOT.gold.max);
+      const lootRum = randInt(CARAVAN_LOOT.rum.min, CARAVAN_LOOT.rum.max);
+      const extraLoss = Math.random() < CARAVAN_LOSS_CHANCE ? 1 : 0;
+      const totalLost = Math.min(ci.boats, battle.playerLost + extraLoss);
+      const actualReturned = ci.boats - totalLost;
+
+      if (p) {
+        p.gold += lootGold;
+        p.rum += lootRum;
+        p.boats = Math.min(p.boats + actualReturned, boatCapacity(p.dock_level));
+        const pa = p.passives || defaultPassives();
+        pa.successful_raids = (pa.successful_raids || 0) + 1;
+        pa.raid_speed = Math.floor((pa.successful_raids || 0) / 10) * PASSIVE_RAID_SPEED_PER_10_RAIDS;
+        p.passives = pa;
+        persist(ci.owner);
+      }
+      io.to(ci.owner).emit('caravanInterceptResult', {
+        ok: true,
+        won: true,
+        gold: lootGold,
+        rum: lootRum,
+        boatsLost: totalLost,
+        boatsReturned: actualReturned
+      });
+      if (p) io.to(ci.owner).emit('chat', { from: 'Caravan', text: `Caravan intercepted! +${lootGold} gold, +${lootRum} rum. Lost ${totalLost} boat(s).` });
+    } else {
+      if (p) {
+        p.boats = Math.min(p.boats + boatsReturned, boatCapacity(p.dock_level));
+        persist(ci.owner);
+      }
+      io.to(ci.owner).emit('caravanInterceptResult', {
+        ok: true,
+        won: false,
+        boatsLost: battle.playerLost,
+        boatsReturned: boatsReturned
+      });
+      if (p) io.to(ci.owner).emit('chat', { from: 'Caravan', text: `Caravan escort repelled you! Lost ${battle.playerLost} boat(s).` });
+    }
+    caravanIntercepts.splice(i, 1);
+  }
 }, RAID_CHECK_TICK);
+
+// ── Движение караванов по маршруту (10 сек) ──────────────
+setInterval(() => {
+  for (const c of caravans) {
+    const target = c.route[(c.routeIndex + 1) % c.route.length];
+    const dx = target.x - c.x;
+    const dy = target.y - c.y;
+    const d = Math.sqrt(dx * dx + dy * dy) || 1;
+    const step = Math.min(CARAVAN_SPEED, d);
+    c.x += (dx / d) * step;
+    c.y += (dy / d) * step;
+    if (step >= d - 1) c.routeIndex = (c.routeIndex + 1) % c.route.length;
+  }
+}, CARAVAN_TICK_MS);
 
 // ── PvP missions tick (100 мс) ───────────────────────────
 setInterval(() => {
@@ -1188,8 +1485,7 @@ io.on('connection', (socket) => {
     }
     p.wood -= cost;
     p.dock_level += 1;
-    const newCap = boatCapacity(p.dock_level);
-    p.boats = newCap; // при апгрейде даём полный набор лодок до нового лимита
+    const newCap = boatCapacity(p.dock_level); // только лимит; лодки покупаются отдельно
     persist(currentNick);
     console.log(`[UPGRADE] ${currentNick}: dock → ${p.dock_level} (cost ${cost} wood), boats ${p.boats}/${newCap}`);
     callback({ ok: true, dock_level: p.dock_level, wood: Math.floor(p.wood), boats: p.boats, boats_max: newCap });
@@ -1267,8 +1563,9 @@ io.on('connection', (socket) => {
     if (!currentNick || !players[currentNick]) return callback({ ok: false, msg: 'Not logged in' });
     const p = players[currentNick];
     const cap = boatCapacity(p.dock_level);
-    if (p.boats >= cap) {
-      return callback({ ok: false, msg: 'Boats at maximum capacity' });
+    const deployed = boatsInMissions(currentNick);
+    if (p.boats + deployed >= cap) {
+      return callback({ ok: false, msg: 'Boats at maximum capacity (including deployed)' });
     }
     if (p.wood < BOAT_BUILD_COST) {
       return callback({ ok: false, msg: `Need ${BOAT_BUILD_COST} wood (have ${Math.floor(p.wood)})` });
@@ -1361,6 +1658,177 @@ io.on('connection', (socket) => {
     callback({ ok: true, duration, islandId, type: island.type });
   });
 
+  // ── Захват нейтральной точки (PvP-конкуренция) ─────────
+  socket.on('launchCapture', (data, callback) => {
+    if (typeof callback !== 'function') return;
+    if (!currentNick || !players[currentNick]) return callback({ ok: false, msg: 'Not logged in' });
+    const p = players[currentNick];
+
+    const pointId = parseInt(data?.pointId);
+    const cp = capturePoints.find(c => c.id === pointId);
+    if (!cp) return callback({ ok: false, msg: 'Invalid point' });
+    if (cp.respawnAt > Date.now()) return callback({ ok: false, msg: 'Point not available yet' });
+    if (cp.capturer === currentNick) return callback({ ok: false, msg: 'Already capturing this point' });
+    if (cp.capturer) return callback({ ok: false, msg: 'Point is being captured — use launchIntercept' });
+
+    const boats = Math.max(1, Math.min(CAPTURE_MAX_BOATS, parseInt(data?.boats) || 1));
+    if (p.boats < boats) return callback({ ok: false, msg: `Need ${boats} boats (have ${p.boats})` });
+
+    p.boats -= boats;
+    const duration = Math.round(CAPTURE_BASE_TIME_MS / boats);
+    cp.capturer = currentNick;
+    cp.capturerBoats = boats;
+    cp.captureEta = Date.now() + duration;
+
+    persist(currentNick);
+    io.emit('capturePoints', getCapturePointsPublic());
+    io.emit('chat', { from: 'Capture', text: `${currentNick} is capturing a plunder spot! (~${Math.round(duration / 1000)}s)` });
+    console.log(`[CAPTURE] ${currentNick}: point ${pointId} (${boats} boats, ${Math.round(duration / 1000)}s)`);
+    callback({ ok: true, eta: Math.round(duration / 1000), pointId });
+  });
+
+  // ── Перехват захвата точки ──────────────────────────────
+  socket.on('launchIntercept', (data, callback) => {
+    if (typeof callback !== 'function') return;
+    if (!currentNick || !players[currentNick]) return callback({ ok: false, msg: 'Not logged in' });
+    const p = players[currentNick];
+
+    const pointId = parseInt(data?.pointId);
+    const cp = capturePoints.find(c => c.id === pointId);
+    if (!cp) return callback({ ok: false, msg: 'Invalid point' });
+    if (!cp.capturer) return callback({ ok: false, msg: 'Nothing to intercept' });
+    if (cp.capturer === currentNick) return callback({ ok: false, msg: 'Cannot intercept your own capture' });
+
+    const boats = Math.max(1, Math.min(CAPTURE_MAX_BOATS, parseInt(data?.boats) || 1));
+    if (p.boats < boats) return callback({ ok: false, msg: `Need ${boats} boats (have ${p.boats})` });
+
+    const defenderNick  = cp.capturer;
+    const defenderBoats = cp.capturerBoats;
+    const defender = players[defenderNick];
+
+    p.boats -= boats;
+
+    const battle = resolveFleetBattle(boats, defenderBoats);
+    const interceptorWon = battle.winner === 'a';
+
+    p.boats = Math.min(p.boats + (boats - battle.aLost), boatCapacity(p.dock_level));
+    if (defender) {
+      defender.boats = Math.min(defender.boats + (defenderBoats - battle.bLost), boatCapacity(defender.dock_level));
+    }
+
+    const loserDebris = randInt(30, 80);
+    if (interceptorWon) {
+      const remaining = cp.captureEta ? Math.max(30000, cp.captureEta - Date.now()) : CAPTURE_BASE_TIME_MS;
+      cp.capturer = currentNick;
+      cp.capturerBoats = Math.max(1, boats - battle.aLost);
+      cp.captureEta = Date.now() + remaining;
+      if (defender) { defender.debris_gold += loserDebris; defender.debris_ttl = Date.now() + 24 * 3600 * 1000; }
+      io.to(defenderNick).emit('intercepted', { by: currentNick, pointId, boatsLost: battle.bLost, debris: loserDebris });
+    } else {
+      p.debris_gold += loserDebris;
+      p.debris_ttl = Date.now() + 24 * 3600 * 1000;
+      io.to(defenderNick).emit('intercepted', { by: currentNick, pointId, result: 'defended', boatsLost: battle.bLost });
+    }
+
+    persist(currentNick);
+    if (defender) persist(defenderNick);
+
+    const chatText = interceptorWon
+      ? `${currentNick} seized the plunder spot from ${defenderNick}!`
+      : `${currentNick} failed to intercept ${defenderNick}!`;
+    io.emit('chat', { from: 'Capture', text: chatText });
+    io.emit('capturePoints', getCapturePointsPublic());
+    console.log(`[INTERCEPT] ${currentNick} vs ${defenderNick} at point ${pointId}: winner=${interceptorWon ? 'interceptor' : 'defender'}`);
+
+    callback({ ok: true, won: interceptorWon, boatsLost: battle.aLost, defenderBoatsLost: battle.bLost });
+  });
+
+  // ── Перехват имперского каравана ───────────────────────
+  socket.on('interceptCaravan', (data, callback) => {
+    if (typeof callback !== 'function') return;
+    if (!currentNick || !players[currentNick]) return callback({ ok: false, msg: 'Not logged in' });
+    const p = players[currentNick];
+
+    const caravanId = parseInt(data?.caravanId);
+    const caravan = caravans.find(c => c.id === caravanId);
+    if (!caravan) return callback({ ok: false, msg: 'Caravan not found' });
+
+    const boats = Math.max(1, Math.min(5, parseInt(data?.boats) || 1));
+    if (p.boats < boats) return callback({ ok: false, msg: `Need ${boats} boats (have ${p.boats})` });
+
+    const existing = caravanIntercepts.find(ci => ci.caravanId === caravanId);
+    const now = Date.now();
+
+    if (!existing) {
+      // Первый перехват этого каравана — обычная миссия против NPC
+      const duration = CARAVAN_INTERCEPT_MIN_MS + Math.random() * (CARAVAN_INTERCEPT_MAX_MS - CARAVAN_INTERCEPT_MIN_MS);
+      const interceptId = now.toString(36) + Math.random().toString(36).slice(2, 6);
+      p.boats -= boats;
+      caravanIntercepts.push({ id: interceptId, owner: currentNick, caravanId, boats, startTime: now, duration });
+
+      persist(currentNick);
+      io.emit('state', getStatePayload());
+      console.log(`[CARAVAN] ${currentNick}: intercepting caravan ${caravanId} with ${boats} boats, ETA ${Math.round(duration / 60000)}min`);
+      callback({ ok: true, duration: Math.round(duration), eta: Math.ceil(duration / 1000) });
+      return;
+    }
+
+    // Конкуренция: другой игрок уже перехватывает этот караван.
+    // Новый перехватчик пытается «сбить» старого: Fleet vs Fleet за право продолжать перехват.
+    const defenderOwner = existing.owner;
+    const defender = players[defenderOwner];
+    const battle = resolveFleetBattle(boats, existing.boats);
+
+    // Списываем лодки атакующего из дока
+    p.boats -= boats;
+
+    if (battle.winner === 'a') {
+      // Новый игрок выигрывает схватку и перехватывает миссию
+      const attackerRemaining = Math.max(1, boats - battle.aLost);
+      const defenderRemaining = Math.max(0, existing.boats - battle.bLost);
+
+      // Защитнику возвращаем выжившие лодки на базу
+      if (defender && defenderRemaining > 0) {
+        defender.boats = Math.min(defender.boats + defenderRemaining, boatCapacity(defender.dock_level));
+        persist(defenderOwner);
+      }
+
+      // Обновляем запись перехвата под нового владельца
+      existing.owner = currentNick;
+      existing.boats = attackerRemaining;
+      existing.startTime = now; // можно перезапустить таймер
+      // duration оставляем как было, чтобы общий ETA не рос бесконечно
+
+      io.to(defenderOwner).emit('chat', {
+        from: 'Caravan',
+        text: `${currentNick} seized your caravan intercept! Lost ${battle.bLost} boat(s).`
+      });
+
+      persist(currentNick);
+      io.emit('state', getStatePayload());
+      console.log(`[CARAVAN] ${currentNick} seized caravan ${caravanId} from ${defenderOwner}: boats ${boats}→${attackerRemaining}, defenderLost=${battle.bLost}`);
+      callback({ ok: true, duration: Math.round(existing.duration), eta: Math.ceil((existing.startTime + existing.duration - now) / 1000) });
+    } else {
+      // Защитник удержал перехват, атакующий теряет часть флота и возвращает выживших на базу
+      const attackerRemaining = Math.max(0, boats - battle.aLost);
+      if (attackerRemaining > 0) {
+        p.boats = Math.min(p.boats + attackerRemaining, boatCapacity(p.dock_level));
+      }
+      // Лёгкий урон по защитнику: уменьшаем его боевой состав в миссии
+      existing.boats = Math.max(1, existing.boats - battle.bLost);
+      if (defender) persist(defenderOwner);
+      persist(currentNick);
+
+      io.to(defenderOwner).emit('chat', {
+        from: 'Caravan',
+        text: `${currentNick} tried to steal your caravan but failed! Lost ${battle.aLost} boat(s).`
+      });
+
+      console.log(`[CARAVAN] ${currentNick} failed to seize caravan ${caravanId} from ${defenderOwner}: lost ${battle.aLost}, defenderLost=${battle.bLost}`);
+      callback({ ok: false, msg: `Another pirate is already intercepting this caravan (you lost ${battle.aLost} boat(s) in the skirmish)` });
+    }
+  });
+
   // ── PvP атака — создаёт летящую миссию ────────────────
   socket.on('attackPlayer', (data, callback) => {
     if (typeof callback !== 'function') return;
@@ -1374,7 +1842,7 @@ io.on('connection', (socket) => {
     if (targetNick === currentNick) return callback({ ok: false, msg: 'Cannot attack yourself' });
 
     // Щит — проверяем на старте
-    if (target.shield_until > Date.now()) {
+    if (SHIELD_POST_ATTACK_HOURS > 0 && target.shield_until > Date.now()) {
       const remainH = Math.ceil((target.shield_until - Date.now()) / 3600000);
       return callback({ ok: false, msg: `Target is shielded (${remainH}h left)` });
     }
@@ -1388,11 +1856,12 @@ io.on('connection', (socket) => {
       return callback({ ok: false, msg: `PvP cooldown: ${remainM} min` });
     }
 
-    const enhancedRaid = !!data.enhancedRaid;
-    const boatsNeeded = enhancedRaid ? ENHANCED_RAID_BOATS : PVP_BOATS_REQUIRED;
-    if (attacker.boats < boatsNeeded) {
-      return callback({ ok: false, msg: `Need ${boatsNeeded} boats${enhancedRaid ? ' (enhanced raid)' : ''}` });
+    const maxFleet  = Math.min(5, boatCapacity(attacker.dock_level));
+    const fleetSize = Math.max(1, Math.min(maxFleet, parseInt(data.fleetSize) || 1));
+    if (attacker.boats < fleetSize) {
+      return callback({ ok: false, msg: `Need ${fleetSize} boats (have ${attacker.boats})` });
     }
+    const boatsNeeded = fleetSize;
 
     const pvpAttacks = attacker.pvp_attacks || {};
     const rec = pvpAttacks[targetNick] || { c: 0, t: 0 };
@@ -1425,7 +1894,16 @@ io.on('connection', (socket) => {
       speed: PVP_SPEED,
       ownerColor: attacker.color,
       boatsUsed: boatsNeeded,
-      enhancedRaid
+      defenseModifier: null   // заполняется через activeDefenseChoice
+    });
+
+    // Уведомить цель об атаке — даёт время выбрать активную оборону
+    io.to(targetNick).emit('incomingAttack', {
+      missionId,
+      by: currentNick,
+      eta,
+      boatsUsed: boatsNeeded,
+      defenseTimeout: ACTIVE_DEFENSE_TIMEOUT_MS
     });
 
     attacker.has_attacked_anyone = true;
@@ -1437,7 +1915,7 @@ io.on('connection', (socket) => {
 
     console.log(`[PVP] ${currentNick} → ${targetNick}: mission launched (dist=${Math.round(dist)}, ETA=${eta}s)`);
 
-    callback({ ok: true, launched: true, eta, targetNick });
+    callback({ ok: true, launched: true, eta, targetNick, fleetSize: boatsNeeded });
 
     io.emit('chat', {
       from: 'PvP',
@@ -1470,6 +1948,49 @@ io.on('connection', (socket) => {
     persist(currentNick);
     console.log(`[SHIELD] ${currentNick} bought shield (1h), cooldown 6h`);
     callback({ ok: true, shieldUntil: p.shield_until, shieldCooldownUntil: p.shield_cooldown_until });
+  });
+
+  // ── Активная оборона (выбор при входящей атаке) ────────
+  socket.on('activeDefenseChoice', (data, callback) => {
+    if (typeof callback !== 'function') return;
+    if (!currentNick || !players[currentNick]) return callback({ ok: false, msg: 'Not logged in' });
+
+    const { missionId, choice } = data || {};
+    const m = pvpMissions.find(m => m.id === missionId && m.targetNick === currentNick);
+    if (!m) return callback({ ok: false, msg: 'Mission not found or already resolved' });
+    if (m.defenseModifier) return callback({ ok: false, msg: 'Defense already chosen' });
+
+    const p = players[currentNick];
+
+    if (choice === 'cannon') {
+      const cost = Math.max(10, Math.floor(p.rum * ACTIVE_DEFENSE_CANNON_RUM_PCT));
+      if (p.rum < cost) return callback({ ok: false, msg: `Need ${cost} rum` });
+      p.rum -= cost;
+      m.defenseModifier = { type: 'cannon', defMult: ACTIVE_DEFENSE_CANNON_DEF_MULT };
+      console.log(`[DEFENSE] ${currentNick}: cannon volley (cost ${cost} rum)`);
+      callback({ ok: true, type: 'cannon', cost });
+
+    } else if (choice === 'shield') {
+      const cost = ACTIVE_DEFENSE_SHIELD_GOLD_COST;
+      if (p.gold < cost) return callback({ ok: false, msg: `Need ${cost} gold` });
+      p.gold -= cost;
+      m.defenseModifier = { type: 'shield', stealReduce: ACTIVE_DEFENSE_SHIELD_STEAL_REDUCE };
+      console.log(`[DEFENSE] ${currentNick}: shield boost (cost ${cost} gold)`);
+      callback({ ok: true, type: 'shield', cost });
+
+    } else if (choice === 'mercenary') {
+      const cost = ACTIVE_DEFENSE_MERC_RUM_COST;
+      if (p.rum < cost) return callback({ ok: false, msg: `Need ${cost} rum` });
+      p.rum -= cost;
+      m.defenseModifier = { type: 'mercenary', defBonus: ACTIVE_DEFENSE_MERC_DEF_BONUS };
+      console.log(`[DEFENSE] ${currentNick}: mercenaries hired (cost ${cost} rum)`);
+      callback({ ok: true, type: 'mercenary', cost });
+
+    } else {
+      return callback({ ok: false, msg: 'Unknown choice' });
+    }
+
+    persist(currentNick);
   });
 
   // ── Сбор debris ────────────────────────────────────────
@@ -1521,6 +2042,9 @@ async function start() {
     generateResourceIslands();
     await saveResourceIslandsToRedis();
   }
+
+  generateCapturePoints();
+  generateCaravans();
 
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, '0.0.0.0', () => {
