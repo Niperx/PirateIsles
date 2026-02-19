@@ -492,6 +492,13 @@
     </div>
     <div class="upgrade-row">
       <div class="u-info">
+        <div class="u-name" data-i18n="build_boat">Build Boat</div>
+        <div class="u-cost"><span id="u-boat-build-cost">80</span> <span data-i18n="wood_short">wood</span></div>
+      </div>
+      <button class="upgrade-btn" id="btn-build-boat" data-i18n="build_btn">Build</button>
+    </div>
+    <div class="upgrade-row">
+      <div class="u-info">
         <div class="u-name" data-i18n="cannons">Cannons</div>
         <div class="u-lvl"><span data-i18n="lvl_short">Lv</span>.<span id="u-cannon-lvl">0</span></div>
         <div class="u-cost"><span id="u-cannon-cost-rum">300</span>r + <span id="u-cannon-cost-wood">200</span>w</div>
@@ -714,6 +721,9 @@
       newbie_shield: 'Newbie',
       buy_shield_btn: 'Buy shield',
       buy_shield_tip: 'Shield 1h (10% resources, 6h cooldown)',
+      build_boat: 'Build Boat',
+      build_btn: 'Build',
+      boat_built: 'Boat built! Fleet ready.',
     },
     ru: {
       subtitle: 'Idle PvPvE пиратская стратегия',
@@ -792,6 +802,9 @@
       newbie_shield: 'Новичок',
       buy_shield_btn: 'Купить щит',
       buy_shield_tip: 'Щит 1 ч (10% ресурсов, кулдаун 6 ч)',
+      build_boat: 'Постройка лодки',
+      build_btn: 'Строить',
+      boat_built: 'Лодка построена! Флот пополнен.',
     }
   };
 
@@ -866,6 +879,7 @@
 
   const btnUpTavern = document.getElementById('btn-up-tavern');
   const btnUpDock = document.getElementById('btn-up-dock');
+  const btnBuildBoat = document.getElementById('btn-build-boat');
   const btnUpCannons = document.getElementById('btn-up-cannons');
   const btnUpIsland = document.getElementById('btn-up-island');
   const btnSendRaid = document.getElementById('btn-send-raid');
@@ -910,10 +924,22 @@
   let worldResourceIslands = []; // [{id, x, y, type, size, depleted_until}]
   let myResourceRaids = [];      // [{islandId, startTime, duration}]
   let resHitZones = [];          // [{id, wx, wy, size}] — обновляется в drawResourceIslands
+  let raidAngles     = new Map();  // startTime → random angle (persistent per raid)
+  let successReturns = [];         // [{angle, startedAt}] — return animations after successful raids
+  let lastRaids      = [];         // snapshot of last non-empty raidsUpdate (used in raidResult)
 
   // ── Assets ────────────────────────────────────
   const imgIsland = new Image();
   imgIsland.src = 'assets/sprites/islands/island1.png';
+
+  const imgResIsland = {
+    wood: new Image(),
+    gold: new Image(),
+    rum:  new Image()
+  };
+  imgResIsland.wood.src = 'assets/sprites/islands/tree.png';
+  imgResIsland.gold.src = 'assets/sprites/islands/gold.png';
+  imgResIsland.rum.src  = 'assets/sprites/islands/rum.png';
 
   const imgShip = new Image();
   imgShip.src = 'assets/sprites/ships/ship-pirate-small.png';
@@ -929,9 +955,8 @@
   function getArchipelagoCount(nick) {
     return 2 + (archSeed(nick, 0) % 3); // 2–4
   }
-  const ARCHI_TYPES  = ['wood', 'wood', 'stone', 'rum'];
-  const ARCHI_ICONS  = { wood: '🌲', stone: '⛰️', rum: '🍺' };
-  const ARCHI_COLORS = { wood: '#3d7a38', stone: '#7a7060', rum: '#b86020' };
+  const ARCHI_TYPES  = ['wood', 'wood', 'gold', 'rum'];
+  const ARCHI_COLORS = { wood: '#3d7a38', gold: '#c8a020', rum: '#b86020' };
   const ARCHI_WOOD_PER_SEC = 0.4; // зеркало серверной константы
 
   function getArchipelago(nick) {
@@ -960,9 +985,9 @@
   // 'base' = только свой остров, крупным планом
   // 'world' = карта со всеми игроками
   let viewMode = 'base';
-  let viewZoom = 2.5;       // текущий zoom (анимированный)
-  let targetZoom = 2.5;     // целевой zoom
-  const ZOOM_BASE = 2.5;    // zoom для base view
+  let viewZoom = 1.5;       // текущий zoom (анимированный)
+  let targetZoom = 1.5;     // целевой zoom
+  const ZOOM_BASE = 1.5;    // zoom для base view
   const ZOOM_WORLD = 1.0;   // zoom для world view
   const WORLD_UNLOCK_LVL = 3; // уровень острова для разблокировки карты
 
@@ -972,6 +997,7 @@
   let cameraOnDragStart = null;
 
   // Balance constants (mirror server)
+  const BOAT_BUILD_COST = 80;         // должно совпадать с BOAT_BUILD_COST в server.js
   const TAVERN_BASE_COST = 400;
   const DOCK_BASE_COST = 300;
   const CANNON_BASE_COST_RUM = 300;
@@ -1258,7 +1284,16 @@
   });
 
   socket.on('raidsUpdate', (raids) => {
-    myRaids = raids;
+    const now = Date.now();
+    // Assign a random angle to each new raid; clean up angles for ended raids
+    const active = new Set(raids.map(r => r.startTime));
+    for (const [st] of raidAngles) if (!active.has(st)) raidAngles.delete(st);
+    for (const r of raids) {
+      if (!raidAngles.has(r.startTime)) raidAngles.set(r.startTime, Math.random() * Math.PI * 2);
+    }
+    // Attach smooth-timing fields so animation interpolates between server ticks
+    myRaids = raids.map(r => ({ ...r, receivedAt: now, remainingAtReceive: r.remaining }));
+    if (raids.length > 0) lastRaids = myRaids;
     updateRaidPanel();
   });
 
@@ -1267,8 +1302,16 @@
       const l = data.loot;
       playCoin();
       showToast(t('boat_returned', l.rum, l.wood, l.gold), 'good');
+      // Find the completing raid (smallest remaining) and start return animation
+      const src = myRaids.length > 0 ? myRaids : lastRaids;
+      const completing = src.reduce((a, b) => (!a || b.remaining < a.remaining) ? b : a, null);
+      if (completing) {
+        const angle = raidAngles.get(completing.startTime) ?? Math.random() * Math.PI * 2;
+        successReturns.push({ angle, startedAt: Date.now() });
+      }
     } else if (data.boatLost) {
       showToast(t('boat_lost'), 'bad');
+      // No return animation — boat was lost
     }
   });
 
@@ -1352,6 +1395,7 @@
 
     btnUpTavern.disabled = m.rum < Math.floor(TAVERN_BASE_COST * Math.pow(COST_MULT, m.tavern_level - 1));
     btnUpDock.disabled = m.wood < Math.floor(DOCK_BASE_COST * Math.pow(COST_MULT, m.dock_level - 1));
+    btnBuildBoat.disabled = m.boats >= m.boats_max || m.wood < BOAT_BUILD_COST;
     btnUpCannons.disabled = m.rum < Math.floor(CANNON_BASE_COST_RUM * Math.pow(COST_MULT, m.cannon_level)) ||
                             m.wood < Math.floor(CANNON_BASE_COST_WOOD * Math.pow(COST_MULT, m.cannon_level));
     btnUpIsland.disabled = m.rum < Math.floor(1000 * Math.pow(2, m.island_level - 1)) ||
@@ -1657,6 +1701,13 @@
     });
   });
 
+  btnBuildBoat.addEventListener('click', () => {
+    socket.emit('buyBoat', (resp) => {
+      if (resp.ok) showToast(t('boat_built'), 'good');
+      else showToast(resp.msg, 'bad');
+    });
+  });
+
   btnUpCannons.addEventListener('click', () => {
     socket.emit('upgradeCannons', (resp) => {
       if (resp.ok) showToast(t('cannons_up', resp.cannon_level), 'good');
@@ -1712,10 +1763,15 @@
         const min = Math.floor(resp.duration / 60000);
         playBoatSend();
         showToast(t('boat_sent', min), 'good');
+        const sentAt = Date.now();
+        const sentAngle = Math.random() * Math.PI * 2;
+        raidAngles.set(sentAt, sentAngle);
         myRaids.push({
-          startTime: Date.now(),
+          startTime: sentAt,
           duration: resp.duration,
-          remaining: resp.duration
+          remaining: resp.duration,
+          receivedAt: sentAt,          // обязательно — иначе smoothRemaining = NaN
+          remainingAtReceive: resp.duration
         });
         updateRaidPanel();
       } else {
@@ -1777,7 +1833,7 @@
       if (sx < W / 2 - halfVW - margin || sx > W / 2 + halfVW + margin ||
           sy < H / 2 - halfVH - margin || sy > H / 2 + halfVH + margin) continue;
 
-      drawArchipelagoAt(p, sx, sy);
+      if (isMe && viewMode === 'base') drawArchipelagoAt(p, sx, sy);
       drawIslandAt(p, sx, sy, isMe);
       drawShieldDomeAt(p, sx, sy);
       drawDestructionOverlayAt(p, sx, sy);
@@ -1957,32 +2013,28 @@
 
       if (isMe) archiHitZones.push({ ix, iy, size: rx + 10, idx: i });
 
-      // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.15)';
-      ctx.beginPath();
-      ctx.ellipse(ix + 3, iy + 4, rx * 0.85, ry * 0.85, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Beach
-      ctx.fillStyle = depleted ? '#9a8a5a' : '#c8b87a';
-      ctx.beginPath();
-      ctx.ellipse(ix, iy, rx + 3, ry + 3, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Surface
-      ctx.fillStyle = depleted ? '#5a5248' : (ARCHI_COLORS[isle.type] || '#3d7a38');
-      ctx.globalAlpha = depleted ? 0.6 : 1;
-      ctx.beginPath();
-      ctx.ellipse(ix, iy, rx, ry, 0, 0, Math.PI * 2);
-      ctx.fill();
+      // Sprite
+      const archiImg = imgResIsland[isle.type];
+      const archiDisplayR = rx * 1.6;
+      ctx.globalAlpha = depleted ? 0.4 : 1;
+      if (archiImg && archiImg.complete && archiImg.naturalWidth > 0) {
+        ctx.drawImage(archiImg, ix - archiDisplayR, iy - archiDisplayR, archiDisplayR * 2, archiDisplayR * 2);
+      } else {
+        // Fallback для типов без спрайта (stone и др.)
+        ctx.fillStyle = 'rgba(0,0,0,0.15)';
+        ctx.beginPath();
+        ctx.ellipse(ix + 3, iy + 4, rx * 0.85, ry * 0.85, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = depleted ? '#9a8a5a' : '#c8b87a';
+        ctx.beginPath();
+        ctx.ellipse(ix, iy, rx + 3, ry + 3, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = depleted ? '#5a5248' : (ARCHI_COLORS[isle.type] || '#3d7a38');
+        ctx.beginPath();
+        ctx.ellipse(ix, iy, rx, ry, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
       ctx.globalAlpha = 1;
-
-      // Иконка ресурса
-      const iconPx = Math.max(10, Math.round(rx * 0.9));
-      ctx.font = `${iconPx}px serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(depleted ? '💤' : (ARCHI_ICONS[isle.type] || '🌿'), ix, iy);
 
       // Статус-метка (только для своего острова)
       if (isMe) {
@@ -2005,9 +2057,10 @@
           ctx.fillStyle = '#834848';
           ctx.fillText(t('archi_depleted_tip', minLeft), ix, iy + ry + 4);
         } else {
-          // Подсказка «тап для сбора»
-          ctx.fillStyle = 'rgba(255,233,157,0.55)';
-          ctx.fillText('tap', ix, iy + ry + 4);
+          // Подсказка: тип ресурса — сверху
+          ctx.textBaseline = 'bottom';
+          ctx.fillStyle = 'rgba(255,233,157,0.85)';
+          ctx.fillText(isle.type[0].toUpperCase() + isle.type.slice(1), ix, iy - archiDisplayR - 2);
         }
       }
     }
@@ -2079,7 +2132,7 @@
     const dockX = cx - baseSize * 1.0;
     const dockY = cy + baseSize * 1.0;
     const step = 22;
-    for (let i = 0; i < Math.min(p.boats, 8); i++) {
+    for (let i = Math.min(p.boats, 8) - 1; i >= 0; i--) {
       const bx = dockX - i * step * 0.707;
       const by = dockY - i * step * 0.707 + Math.sin(animFrame * 0.05 + i) * 2;
       drawShipSprite(bx, by, { bob: 0, flipRight: false });
@@ -2093,7 +2146,7 @@
     const dockX = cx - baseSize * 1.0;
     const dockY = cy + baseSize * 1.0;
     const step = 22;
-    for (let i = 0; i < Math.min(p.boats, 6); i++) {
+    for (let i = Math.min(p.boats, 6) - 1; i >= 0; i--) {
       const bx = dockX - i * step * 0.707;
       const by = dockY - i * step * 0.707 + Math.sin(animFrame * 0.04 + i + p.nick.length) * 2;
       drawShipSprite(bx, by, { bob: 0, flipRight: false });
@@ -2156,40 +2209,89 @@
   }
 
   function drawRaidBoatsAt(p, cx, cy) {
-    if (myRaids.length === 0) return;
-    myRaids.forEach((r, i) => {
-      const progress = Math.min(1, 1 - (r.remaining / r.duration));
-      const angle = -Math.PI / 2 + (i * 0.8 - (myRaids.length - 1) * 0.4);
-      const dist = 120 + progress * 200;
-      const bx = cx + Math.cos(angle) * dist;
-      const by = cy + Math.sin(angle) * dist * 0.5;
-      const bob = Math.sin(animFrame * 0.06 + i) * 2;
-      const flipRight = (bx - cx) >= 0;
+    const DEPART_TIME = 5000;   // ms sailing away
+    const RETURN_TIME = 5000;   // ms sailing back (successful raids only)
+    const SAIL_DIST   = 180;    // px beyond island edge before disappearing
+    const baseSize    = 70 + p.island_level * 12;
+    const islandR     = baseSize * 1.4;  // starts just outside the island sprite
+    const now         = Date.now();
 
-      // Wake trail
-      ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      for (let tt = 0; tt < 20; tt++) {
-        const tp = Math.max(0, progress - tt * 0.005);
-        const td = 120 + tp * 200;
-        const tx = cx + Math.cos(angle) * td;
-        const ty = cy + Math.sin(angle) * td * 0.5;
-        if (tt === 0) ctx.moveTo(tx, ty + bob);
-        else ctx.lineTo(tx, ty);
-      }
-      ctx.stroke();
+    // ── Departure phase for each active raid ──────────────────────────────
+    for (const r of myRaids) {
+      // Smooth remaining: interpolate locally between server ticks
+      const smoothRemaining = Math.max(0, r.remainingAtReceive - (now - r.receivedAt));
+      const elapsed = r.duration - smoothRemaining;
+      if (elapsed < 0 || elapsed >= DEPART_TIME) continue; // invisible phase — skip
 
-      drawShipSprite(bx, by, { bob, flipRight });
+      const angle = raidAngles.get(r.startTime) ?? 0;
+      const cosA  = Math.cos(angle);
+      const sinA  = Math.sin(angle);
+      const startX = cx + cosA * islandR;
+      const startY = cy + sinA * islandR;
+      const farX   = cx + cosA * (islandR + SAIL_DIST);
+      const farY   = cy + sinA * (islandR + SAIL_DIST);
 
-      const remainMin = Math.floor(r.remaining / 60000);
-      const remainSec = Math.floor((r.remaining % 60000) / 1000);
-      ctx.fillStyle = '#64b5f6';
-      ctx.font = '10px Georgia';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'alphabetic';
-      ctx.fillText(`${remainMin}:${String(remainSec).padStart(2, '0')}`, bx, by - 16);
+      const t  = elapsed / DEPART_TIME;
+      const bx = startX + t * (farX - startX);
+      const by = startY + t * (farY - startY);
+
+      const remainMin = Math.floor(smoothRemaining / 60000);
+      const remainSec = Math.floor((smoothRemaining % 60000) / 1000);
+      drawRaidShipAt(bx, by, cosA, sinA, false,
+        `${remainMin}:${String(remainSec).padStart(2, '0')}`);
+    }
+
+    // ── Return phase: only for raids that succeeded ────────────────────────
+    successReturns = successReturns.filter(sr => {
+      const elapsed = now - sr.startedAt;
+      if (elapsed >= RETURN_TIME) return false; // animation done
+
+      const cosA  = Math.cos(sr.angle);
+      const sinA  = Math.sin(sr.angle);
+      const startX = cx + cosA * islandR;
+      const startY = cy + sinA * islandR;
+      const farX   = cx + cosA * (islandR + SAIL_DIST);
+      const farY   = cy + sinA * (islandR + SAIL_DIST);
+
+      const t  = elapsed / RETURN_TIME;
+      const bx = farX + t * (startX - farX);
+      const by = farY + t * (startY - farY);
+
+      drawRaidShipAt(bx, by, cosA, sinA, true, null);
+      return true;
     });
+  }
+
+  // Shared renderer for both departure and return phases
+  function drawRaidShipAt(bx, by, cosA, sinA, isReturning, label) {
+    // Guard: non-finite coordinates crash createLinearGradient and kill the draw loop
+    if (!isFinite(bx) || !isFinite(by)) return;
+    const bob       = Math.sin(animFrame * 0.06) * 2;
+    const flipRight = isReturning ? cosA < 0 : cosA >= 0;
+    // Wake trail — isolate canvas state changes with save/restore
+    ctx.save();
+    const sign  = isReturning ? 1 : -1;
+    const tailX = bx + sign * cosA * 28;
+    const tailY = by + sign * sinA * 28;
+    const grad  = ctx.createLinearGradient(bx, by, tailX, tailY);
+    grad.addColorStop(0, 'rgba(255,255,255,0.22)');
+    grad.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.strokeStyle = grad;
+    ctx.lineWidth   = 3;
+    ctx.lineCap     = 'round';
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    ctx.lineTo(tailX, tailY);
+    ctx.stroke();
+    ctx.restore();
+    drawShipSprite(bx, by, { bob, flipRight });
+    if (label) {
+      ctx.fillStyle    = '#64b5f6';
+      ctx.font         = '10px Georgia';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText(label, bx, by - 16);
+    }
   }
 
   function drawInfoTextAt(p, cx, cy) {
@@ -2246,9 +2348,6 @@
     const now = Date.now();
     resHitZones = [];
 
-    const TYPE_COLOR = { wood: '#5a9e50', gold: '#c8a020', rum: '#8b3a8b' };
-    const TYPE_ICON  = { wood: '🌲', gold: '💰', rum: '🍺' };
-
     const zoom = viewZoom;
     const halfVW = W / (2 * zoom);
     const halfVH = H / (2 * zoom);
@@ -2269,32 +2368,20 @@
 
       // Island body
       ctx.save();
-      ctx.globalAlpha = depleted ? 0.4 : 0.9;
+      ctx.globalAlpha = depleted ? 0.4 : 1;
 
-      // Shadow
-      ctx.fillStyle = 'rgba(0,0,0,0.2)';
-      ctx.beginPath();
-      ctx.ellipse(sx + 3, sy + 4, r + 2, (r + 2) * 0.6, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Base island shape (sandy)
-      ctx.fillStyle = depleted ? '#888' : '#d4b86a';
-      ctx.beginPath();
-      ctx.ellipse(sx, sy, r, r * 0.65, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Type color accent
-      ctx.fillStyle = depleted ? '#666' : (TYPE_COLOR[isl.type] || '#888');
-      ctx.beginPath();
-      ctx.ellipse(sx, sy - 2, r * 0.55, r * 0.38, 0, 0, Math.PI * 2);
-      ctx.fill();
-
-      // Icon
-      ctx.globalAlpha = depleted ? 0.3 : 1;
-      ctx.font = `${Math.max(10, Math.round(r * 0.75))}px serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(depleted ? '💤' : (TYPE_ICON[isl.type] || '?'), sx, sy - 2);
+      // Sprite
+      const img = imgResIsland[isl.type];
+      const displayR = r * 1.6;
+      if (img && img.complete && img.naturalWidth > 0) {
+        ctx.drawImage(img, sx - displayR, sy - displayR, displayR * 2, displayR * 2);
+      } else {
+        // Fallback: sandy ellipse
+        ctx.fillStyle = depleted ? '#888' : '#d4b86a';
+        ctx.beginPath();
+        ctx.ellipse(sx, sy, r, r * 0.65, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
 
       // Depletion timer
       if (depleted) {
@@ -2302,7 +2389,9 @@
         ctx.globalAlpha = 0.9;
         ctx.fillStyle = '#fff';
         ctx.font = `bold ${Math.max(8, Math.round(r * 0.55))}px monospace`;
-        ctx.fillText(`${minsLeft}m`, sx, sy + r * 0.55);
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`${minsLeft}m`, sx, sy - displayR - 2);
       }
 
       // Progress arc if harvesting
@@ -2320,11 +2409,13 @@
         ctx.font = `${Math.max(8, Math.round(r * 0.5))}px sans-serif`;
         ctx.fillText(t('res_island_busy_tip'), sx, sy + r + 10);
       } else if (!depleted && !raid) {
-        // Tap hint dot
+        // Подсказка: тип ресурса — сверху
         ctx.globalAlpha = 0.5 + 0.3 * Math.sin(animFrame * 0.06);
         ctx.fillStyle = '#fff';
-        ctx.font = `${Math.max(7, Math.round(r * 0.45))}px sans-serif`;
-        ctx.fillText('tap', sx, sy + r + 8);
+        ctx.font = `bold ${Math.max(7, Math.round(r * 0.45))}px sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'bottom';
+        ctx.fillText(isl.type[0].toUpperCase() + isl.type.slice(1), sx, sy - displayR - 2);
       }
 
       ctx.restore();

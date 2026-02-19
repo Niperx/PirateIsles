@@ -53,6 +53,7 @@ const COST_MULTIPLIER = 2;
 // Лодки
 const BASE_BOAT_CAPACITY = 2;       // Начальная вместимость
 const BOATS_PER_DOCK_LVL = 1;       // +1 лодка за уровень дока
+const BOAT_BUILD_COST = 80;         // Стоимость постройки одной лодки (дерево)
 
 // Рейды (AI-лодки)
 const RAID_MIN_TIME = 1 * 60 * 1000;   // 1 мин (тест; боевое: 8 мин)
@@ -127,7 +128,7 @@ const ARCHI_LOSS_CHANCE    = 0.05;           // 5% шанс потери лод�
 // Лут по типу: [min, max]
 const ARCHI_LOOT = {
   wood:  { resource: 'wood',  min: 60,  max: 180 },
-  stone: { resource: 'gold',  min: 30,  max: 100 },
+  gold:  { resource: 'gold',  min: 30,  max: 100 },
   rum:   { resource: 'rum',   min: 80,  max: 250 },
 };
 
@@ -1260,6 +1261,24 @@ io.on('connection', (socket) => {
     });
   });
 
+  // ── Постройка лодки ────────────────────────────────────
+  socket.on('buyBoat', (callback) => {
+    if (typeof callback !== 'function') return;
+    if (!currentNick || !players[currentNick]) return callback({ ok: false, msg: 'Not logged in' });
+    const p = players[currentNick];
+    const cap = boatCapacity(p.dock_level);
+    if (p.boats >= cap) {
+      return callback({ ok: false, msg: 'Boats at maximum capacity' });
+    }
+    if (p.wood < BOAT_BUILD_COST) {
+      return callback({ ok: false, msg: `Need ${BOAT_BUILD_COST} wood (have ${Math.floor(p.wood)})` });
+    }
+    p.wood -= BOAT_BUILD_COST;
+    p.boats += 1;
+    persist(currentNick);
+    callback({ ok: true, boats: p.boats, boats_max: cap, wood: Math.floor(p.wood) });
+  });
+
   // ── Сбор ресурсов с острова архипелага ────────────────
   socket.on('harvestArchi', (data, callback) => {
     if (typeof callback !== 'function') return;
@@ -1290,7 +1309,7 @@ io.on('connection', (socket) => {
     }
 
     // Определяем тип острова (зеркало клиента)
-    const ARCHI_TYPES_SRV = ['wood', 'wood', 'stone', 'rum'];
+    const ARCHI_TYPES_SRV = ['wood', 'wood', 'gold', 'rum'];
     const s3 = archSeed(currentNick, idx * 3 + 3);
     const type = ARCHI_TYPES_SRV[s3 % ARCHI_TYPES_SRV.length];
 
@@ -1506,10 +1525,6 @@ async function start() {
   const PORT = process.env.PORT || 3000;
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`[SYSTEM] PirateIsles v0.1 running on http://localhost:${PORT}`);
-  });
-}
-start();
-${PORT}`);
   });
 }
 start();
