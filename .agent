@@ -11,17 +11,19 @@
 
 ### Клиент (index.html)
 - Логин: ник + опциональный пароль, guest, сохранение в localStorage.
-- HUD: ром, золото, дерево, лодки (текущее/макс), щит; панели: постройки, рейды (с группировкой PvE/архипелаг/ресурсные острова, сортировка по ETA), список игроков.
-- Canvas: два режима — база (свой остров + архипелаг) и мировая карта (острова игроков, ресурсные острова, PvP-миссии). Переключение кнопкой; кнопка «Вернуться на базу» в world mode.
+- HUD: ром, золото, дерево, лодки (свободно/макс + «(N в рейдах)» при N>0), tooltip «Свободно · В рейдах · Лимит»; щит; панели: постройки (в т.ч. строка лодок «Свободно · В рейдах · Лимит»), рейды (PvE, архипелаг, ресурсные острова, перехват караванов), список игроков.
+- Canvas: два режима — база (свой остров + архипелаг) и мировая карта (острова игроков, ресурсные острова, точки захвата, караваны, PvP-миссии). Переключение кнопкой; кнопка «Вернуться на базу» в world mode.
 - Вода: переливающийся градиент + тайл `ripples.png` с параллаксом по камере и времени.
 - Остров: свой — эллипс, постройки (таверна, dok, пушки), лодки у дока, щит-купол, стадии разрушения; архипелаг — островки у базы, клик → рейд на островок.
 - Ресурсные острова: на мировой карте, клик → отправка лодки; отрисовка маршрута пунктиром и лодок в пути.
-- PvP: список игроков, кнопка рейда, летящие «дротики» к цели; щит после атаки.
-- Рейды: AI-рейд, рейды на архипелаг, рейды на ресурсные острова; панель рейдов с прогресс-барами и таймерами.
+- Точки захвата: на мировой карте `drawCapturePoints()` (☠ + кольцо + прогресс-арка); клик → свободную захватить (launchCapture), занятую перехватить (launchIntercept, Fleet vs Fleet).
+- Караваны: на мировой карте `drawCaravans()` (иконка ⛵); клик → выбор лодок, подтверждение → `interceptCaravan`; панель рейдов — группа «Перехват караванов»; событие `caravanInterceptResult` (won, gold, rum, boatsLost).
+- PvP: список игроков, выбор флота 1–N лодок (select), кнопка рейда, летящие «дротики» к цели; щит после атаки; при входящей атаке модалка `#defense-modal` (cannon/shield/mercenary), `activeDefenseChoice`.
+- Рейды: AI-рейд, рейды на архипелаг, рейды на ресурсные острова, перехват караванов; панель рейдов с группировкой и прогресс-барами по ETA.
 - Тосты: успех/ошибка/info, авто-закрытие ~5.5 с.
 - Звуки (Web Audio): волны (loop), монета при луте, звук отправки лодки; инициализация при первом клике (логин).
 - i18n: RU/EN, переключатель, строки в `STRINGS`, `data-i18n`, `t(key, ...args)`.
-- Постройка лодки: кнопка «Строить» (id `btn-build-boat`) в панели построек под доком; стоимость `BOAT_BUILD_COST = 80` дерева (balance constants); кнопка disabled когда `boats >= boats_max` или не хватает дерева.
+- Постройка лодки: кнопка «Строить» (id `btn-build-boat`) в панели построек под доком; стоимость `BOAT_BUILD_COST = 80` дерева (balance constants); кнопка disabled когда `(boats + boats_deployed) >= boats_max` или не хватает дерева. Строка «Свободно · В рейдах · Лимит» (id `u-boats-breakdown`) обновляется в updateHUD.
 
 ### Анимация PvE-рейда (drawRaidBoatsAt / drawRaidShipAt)
 Три фазы, управляемые клиентским временем:
@@ -36,11 +38,13 @@
 ### Сервер (server.js)
 - Игроки: создание/вход по нику и паролю, оффлайн-прогресс при логине (ром, дерево от архипелага).
 - Ресурсы и постройки: rum, gold, wood; таверна, dok, пушки, остров; расчёт стоимости и лимитов (`boatCapacity`, `tavernCost` и т.д.).
-- **Лодки:** `boatCapacity(dockLevel) = 2 + (dockLevel - 1)`. Dok только задаёт лимит. `buyBoat` event: списывает `BOAT_BUILD_COST = 80` дерева, добавляет 1 лодку (до лимита). При апгрейде дока `p.boats = newCap` (полное восстановление). При потере в рейде лодка не возвращается сервером.
-- Рейды: AI-рейд (activeRaids), рейды на архипелаг (archi_raids, archi_depleted), рейды на ресурсные острова (resource_raids); тик `RAID_CHECK_TICK = 5000ms` — завершение, лут, деплеция, события `raidResult`, `archiResult`, `resourceRaidResult`. `raidsUpdate` рассылается в том же тике.
+- **Лодки:** `boatCapacity(dockLevel) = 2 + (dockLevel - 1)`. Док только увеличивает лимит; лодки покупаются отдельно. `buyBoat`: списывает `BOAT_BUILD_COST = 80` дерева, +1 лодка до лимита. При апгрейде дока лимит увеличивается, `p.boats` не восстанавливается автоматически. При потере в рейде лодка не возвращается сервером. В `getPlayerPublic` передаётся `boats`, `boats_max`, `boats_deployed` (boatsInMissions: PvE, архипелаг, ресурсы, PvP, захват, караваны).
+- Рейды: AI-рейд (activeRaids), архипелаг (archi_raids), ресурсные острова (resource_raids); тик `RAID_CHECK_TICK = 5000ms` — завершение, лут, деплеция, события `raidResult`, `archiResult`, `resourceRaidResult`. В том же тике — завершение захватов (capturePoints), перехватов караванов (caravanIntercepts). `raidsUpdate` рассылается в state broadcast.
 - Ресурсные острова: `generateResourceIslands()`, хранение в Redis (ключ `resourceIslands`, JSON).
-- PvP: `attackPlayer` → полёт миссии (`pvpMissions`), `resolvePvpAttack` — кража, щит, `destruction_state`, debris, legacy_bonus.
-- Redis: `player:<id>`, `player:<id>:resources`, `:cooldowns`, `:destruction_state`, `:debris`, `:legacy_bonus`, `:passives` (JSON), `:pvp_attacks` (JSON), `:wipe_state` (JSON); `players:nicks`; `resourceIslands`. Автосейв раз в 20 сек.
+- Точки захвата: `capturePoints[]` (in-memory), `generateCapturePoints()` при старте; `launchCapture`, `launchIntercept` (Fleet vs Fleet через `resolveFleetBattle`); в state — `capturePoints`, у игрока в рейдах учитываются лодки на захвате.
+- Караваны: `caravans[]` (in-memory), `caravanIntercepts[]`; `generateCaravans()` при старте; тик `CARAVAN_TICK_MS = 10000` — движение караванов по маршруту; `interceptCaravan` — если караван свободен: создаётся миссия на 2–5 мин, по истечении `resolveCaravanBattle` (Fleet vs NPC, CARAVAN_NPC_BOATS=3), лут/потери; если караван уже перехватывают: `resolveFleetBattle` (новый vs текущий владелец) — победитель продолжает перехват (existing.owner/boats обновляются), проигравший теряет лодки и получает сообщение в чат. Событие `caravanInterceptResult` (won, gold, rum, boatsLost, boatsReturned). В state — `caravans`, у игрока `caravan_intercepts` для панели рейдов.
+- PvP: `attackPlayer` (fleetSize 1–5) → полёт миссии (`pvpMissions`), сразу `incomingAttack` цели; `activeDefenseChoice` → `defenseModifier` в миссии; `resolvePvpAttack` — симуляция боя (survivorPct, victory/pyrrhic/defeat), кража, щит, `destruction_state`, debris, legacy_bonus.
+- Redis: `player:<id>`, `player:<id>:resources`, `:cooldowns`, `:destruction_state`, `:debris`, `:legacy_bonus`, `:passives` (JSON), `:pvp_attacks` (JSON), `:wipe_state` (JSON); `players:nicks`; `resourceIslands`. Караваны и точки захвата — in-memory, не персистятся. Автосейв раз в 20 сек.
 
 ### Docker
 - `Dockerfile`: копирует package.json, server.js, index.html, `assets/`. `docker-compose.yml`: монтирует `./server.js`, `./index.html`, `./assets` в контейнер.
@@ -51,7 +55,7 @@
 - Анимация PvE-лодки: `drawRaidBoatsAt(p, cx, cy)` и `drawRaidShipAt(bx, by, cosA, sinA, isReturning, label)`.
 - Состояние анимации рейдов: `myRaids` (активные рейды с полями `receivedAt`, `remainingAtReceive`), `raidAngles` (Map), `successReturns` (массив возвратов), `lastRaids` (снимок для raidResult).
 - События socket.io клиент: `socket.on('state', ...)`, `socket.on('raidsUpdate', ...)`, `socket.on('raidResult', ...)`, `socket.on('resourceRaidResult', ...)` и др.
-- События socket.io сервер: `socket.on('join', ...)`, `socket.on('sendRaid', ...)`, `socket.on('buyBoat', ...)`, `socket.on('upgradeDock', ...)`, `socket.on('harvestArchi', ...)`, `socket.on('harvestResourceIsland', ...)` и др.
+- События socket.io сервер: `join`, `sendRaid`, `buyBoat`, `upgradeDock`, `harvestArchi`, `harvestResourceIsland`, `launchCapture`, `launchIntercept` (точки захвата), `interceptCaravan` (караваны), `attackPlayer`, `activeDefenseChoice`, `buyShield`, `collectDebris` и др.
 - Баланс: константы в начале server.js (`TICK_RATE`, `RAID_*`, `PVP_*`, `RESOURCE_*`, `ARCHI_*`, `BOAT_BUILD_COST` и т.д.).
 - Balance constants на клиенте: секция `// Balance constants (mirror server)` в index.html — `BOAT_BUILD_COST`, `TAVERN_BASE_COST`, `DOCK_BASE_COST`, `COST_MULT` и др.
 
@@ -61,5 +65,73 @@
 - Ассеты подключать через путь относительно страницы, например `assets/sea/ripples.png`.
 - Любые константы, дублируемые на клиенте и сервере (например `BOAT_BUILD_COST`), менять синхронно в обоих файлах.
 - `myRaids` всегда должен содержать объекты с `receivedAt` и `remainingAtReceive` — нарушение приводит к NaN и падению draw-цикла.
+
+## PvP — Текущий статус реализации vs Промпт (февраль 2026)
+
+### Что ЕСТЬ сейчас
+- `attackPlayer` socket event: валидация (щит, кулдаун, fleet fatigue), старт `pvpMissions`
+- `resolvePvpAttack`: attacker/defense power → effectiveSteal% → кража рум/золото/дерево
+- Щит после атаки (SHIELD_POST_ATTACK_HOURS), newbie shield
+- Debris: defender получает `debris_gold`, accumulates
+- Legacy: `pvp_steal`, `pvp_wins` в passives
+- Enhanced raid (ENHANCED_RAID_BOATS = повышенный флот)
+- Destruction state (0/1/2) + wipe system (island level drop)
+- `buyShield` за 10% ресурсов
+
+### Чего НЕТ и что нужно добавить
+
+#### ✅ Приоритет 1 — Активная оборона (РЕАЛИЗОВАНО)
+- `incomingAttack` emit к цели сразу при старте pvpMission (payload: missionId, by, eta, boatsUsed, defenseTimeout)
+- Модалка `#defense-modal` с 25-сек таймером и 3 кнопками (cannon/shield/mercenary)
+- `activeDefenseChoice` socket event → валидация → `m.defenseModifier = { type, defMult/stealReduce/defBonus }`
+- `resolvePvpAttack`: применяет dm к defensePower или stealPercent до вычисления исхода
+- Модалка закрывается автоматически при `attacked` event
+
+#### ✅ Приоритет 2 — Симуляция боя + выбор флота (РЕАЛИЗОВАНО)
+- `attackPlayer`: `fleetSize` (1–5, ограничен боатами и доком) вместо fixed/enhanced
+- `resolvePvpAttack`: survivorPct = (1 - baseRatio) ± noise(15%) → 3 тира: victory(>70%), pyrrhic(40-70%), defeat(<40%)
+  - victory: кража 30–50%, малые потери лодок
+  - pyrrhic: кража 10–30%, умеренные потери
+  - defeat: 0 кражи, потеря 70–100% лодок
+- `attackResult` включает `tier`, `boatsLost`, `boatsReturned`
+- Клиент: выпадающий `<select>` 1–N лодок в списке игроков; разные тосты по тиру
+
+#### ✅ Приоритет 3 — Точки захвата PvP (РЕАЛИЗОВАНО)
+- 8 нейтральных `capturePoints[]` на мировой карте (in-memory, генерируются при старте)
+- `launchCapture`: клик на свободную точку → выбор 1–3 лодок → duration = CAPTURE_BASE_TIME_MS / boats
+- `launchIntercept`: клик на занятую точку → Fleet vs Fleet (resolveFleetBattle) → winner берёт захват
+- Тик: при истечении captureEta → лут (gold+rum) → respawnAt = now + 8 мин
+- Клиент: `drawCapturePoints()` на world map (☠ + кольцо + прогресс-арка), `tryCapturePointAt()`
+- Events: `capturePoints` broadcast, `captureResult`, `intercepted`
+
+#### ✅ Приоритет 4 — Имперские караваны (РЕАЛИЗОВАНО)
+- In-memory `caravans[]` (id, x, y, routeIndex, route), `caravanIntercepts[]` (owner, caravanId, boats, startTime, duration). Генерация при старте `generateCaravans()` (4 каравана, маршрут-прямоугольник).
+- Тик `CARAVAN_TICK_MS = 10000`: движение караванов по маршруту. В state — `caravans`, у игрока `caravan_intercepts` для панели рейдов.
+- Socket `interceptCaravan` (caravanId, boats): если караван свободен — создаётся миссия 2–5 мин, по истечении `resolveCaravanBattle` (Fleet vs NPC, CARAVAN_NPC_BOATS=3), лут (CARAVAN_LOOT), риск потерь; событие `caravanInterceptResult` (won, gold, rum, boatsLost, boatsReturned). **Конкуренция:** если караван уже перехватывают — `resolveFleetBattle` (новый vs текущий владелец); победитель продолжает перехват (existing.owner/boats обновляются), проигравший теряет лодки, в чат сообщения «seized your caravan» / «tried to steal but failed»; callback проигравшему `ok: false` с текстом про потерю лодок в стычке.
+
+#### Приоритет 5 — Острова с Сокровищами
+- Redis: `treasures:${id}` hash `{spawnTime, capturer, progress, eta}`
+- Редкие, respawn 4–8ч; таймер 6–10 мин; лут ×2–4; конкуренция
+
+#### Приоритет 6 — Лидерборд
+- Redis sorted set: `leaderboard:pvp_wins`, `leaderboard:pvp_defenses`, `leaderboard:captures`
+- Endpoint или socket event `getLeaderboard` → топ-10
+
+### Redis ключи (добавить)
+- `missions:${id}` — hash `{type, from, to, boats, eta, status, defenseModifier}`
+- `shield:${playerId}` — string с TTL (сейчас shield_until в player hash)
+- `archipelagos:${id}` — hash `{depletion, capturer, progress, eta}`
+- `caravans:${id}` — hash `{posX, posY, route, capturer, eta}`
+- `treasures:${id}` — hash `{spawnTime, capturer, progress}`
+- `leaderboard:pvp_wins` — sorted set
+
+### Socket.io события (реализованные)
+| Event (client→server) | Event (server→client) | Описание |
+|---|---|---|
+| `launchCapture` | `capturePoints` | Захват свободной точки |
+| `launchIntercept` | `capturePoints`, `intercepted` | Перехват захвата (Fleet vs Fleet) |
+| `interceptCaravan` | `caravanInterceptResult`, `state` | Перехват каравана (Fleet vs NPC или конкуренция Fleet vs Fleet) |
+| `activeDefenseChoice` | `incomingAttack` | Активная оборона при входящей PvP-атаке |
+| `getLeaderboard` | `leaderboard` | Топ игроков (планируется) |
 
 Планы, идеи, что делать дальше — в **.todo**.
